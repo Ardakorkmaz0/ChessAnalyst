@@ -1,0 +1,107 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ChessAnalyst{% endblock %}</title>
+    <script>
+        (function () {
+            try {
+                const storedTheme = localStorage.getItem('chessanalyst-theme');
+                document.documentElement.dataset.theme = storedTheme === 'dark' ? 'dark' : 'light';
+            } catch (error) {
+                document.documentElement.dataset.theme = 'light';
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <button type="button"
+                class="theme-toggle"
+                data-theme-toggle
+                title="Switch to dark theme"
+                aria-label="Switch to dark theme">
+            <span class="theme-icon theme-icon-moon" aria-hidden="true">&#9790;</span>
+            <span class="theme-icon theme-icon-sun" aria-hidden="true">&#9728;</span>
+        </button>
+
+        <div class="nav-platforms">
+            <a href="{% url 'analyzer:home_chesscom' %}"
+               class="nav-item nav-chesscom {% if platform == 'chesscom' %}active{% endif %}"
+               title="Chess.com">
+                <img src="{% static 'images/chesscom.png' %}" alt="Chess.com" class="platform-logo platform-logo-light">
+                <img src="{% static 'images/chesscom_logo_wordmark_outline.svg' %}" alt="Chess.com" class="platform-logo platform-logo-dark">
+            </a>
+
+            <a href="{% url 'analyzer:home' %}"
+               class="nav-item nav-both {% if platform == 'both' %}active{% endif %}"
+               title="Both platforms">
+                <span class="both-label">Both</span>
+            </a>
+
+            <a href="{% url 'analyzer:home_lichess' %}"
+               class="nav-item nav-lichess {% if platform == 'lichess' %}active{% endif %}"
+               title="Lichess">
+                <img src="{% static 'images/lichess.svg' %}" alt="Lichess" class="platform-logo">
+            </a>
+        </div>
+
+        {% if user.is_authenticated %}
+            <div class="nav-user">
+                <span class="user-initial" aria-hidden="true" title="Signed in as {{ user.username }}">{{ user.username|first|upper }}</span>
+                <span class="user-name">{{ user.username }}</span>
+                <form method="post" action="{% url 'logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="nav-login logout-button" title="Sign out" aria-label="Sign out">
+                        <img src="{% static 'images/login.svg' %}" alt="" class="login-icon">
+                    </button>
+                </form>
+            </div>
+        {% else %}
+            <a href="{% url 'login' %}" class="nav-login" title="Sign in" aria-label="Sign in">
+                <img src="{% static 'images/login.svg' %}" alt="" class="login-icon">
+            </a>
+        {% endif %}
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        (function () {
+            const root = document.documentElement;
+            const toggle = document.querySelector('[data-theme-toggle]');
+
+            if (!toggle) {
+                return;
+            }
+
+            function applyTheme(theme) {
+                const activeTheme = theme === 'dark' ? 'dark' : 'light';
+                const isDark = activeTheme === 'dark';
+                root.dataset.theme = activeTheme;
+                toggle.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+                toggle.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+            }
+
+            applyTheme(root.dataset.theme);
+
+            toggle.addEventListener('click', function () {
+                const nextTheme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+                applyTheme(nextTheme);
+
+                try {
+                    localStorage.setItem('chessanalyst-theme', nextTheme);
+                } catch (error) {
+                    // The theme still changes even if the browser cannot save it.
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

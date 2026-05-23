@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Create account — ChessAnalyst{% endblock %}
+
+{% block content %}
+<section class="auth-wrapper">
+    <div class="auth-card">
+        <h1 class="auth-title">Create an account</h1>
+
+        <form method="post" class="auth-form">
+            {% csrf_token %}
+
+            {% for field in form %}
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}
+                    <small class="auth-help">{{ field.help_text|safe }}</small>
+                {% endif %}
+                {% for error in field.errors %}
+                    <div class="auth-error">{{ error }}</div>
+                {% endfor %}
+            {% endfor %}
+
+            <button type="submit" class="cta-button">Sign up</button>
+        </form>
+
+        <p class="auth-switch">
+            Already have an account?
+            <a href="{% url 'login' %}">Sign in</a>
+        </p>
+    </div>
+</section>
+{% endblock %}

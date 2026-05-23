@@ -1,0 +1,21 @@
+db.sqlite3
+media/
+__pycache__/
+*.pyc
+.env
+
+# Personal notes / planning (not for public)
+PLAN.md
+
+# virtual environment
+venv/
+.venv/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in — ChessAnalyst{% endblock %}
+
+{% block content %}
+<section class="auth-wrapper">
+    <div class="auth-card">
+        <h1 class="auth-title">Sign in</h1>
+
+        {% if form.errors %}
+            <div class="auth-error">
+                Wrong username or password. Try again.
+            </div>
+        {% endif %}
+
+        <form method="post" class="auth-form">
+            {% csrf_token %}
+
+            <label for="id_username">Username</label>
+            <input type="text" name="username" id="id_username" autofocus required>
+
+            <label for="id_password">Password</label>
+            <input type="password" name="password" id="id_password" required>
+
+            <button type="submit" class="cta-button">Sign in</button>
+
+            <input type="hidden" name="next" value="{{ next }}">
+        </form>
+
+        <p class="auth-switch">
+            Don't have an account?
+            <a href="{% url 'analyzer:signup' %}">Create one</a>
+        </p>
+    </div>
+</section>
+{% endblock %}
