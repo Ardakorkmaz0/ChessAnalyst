@@ -13,8 +13,8 @@ def home_both(request):
     # Always pass an empty payload skeleton so the JSON script tag is valid
     # even on guest/empty states (the JS exits if there's no chart canvas).
     empty_payload = {
-        'chesscom': {'bullet': [], 'blitz': [], 'rapid': [], 'classical': []},
-        'lichess':  {'bullet': [], 'blitz': [], 'rapid': [], 'classical': []},
+        'chesscom': {'bullet': [], 'blitz': [], 'rapid': [], 'classical': [], 'daily': []},
+        'lichess':  {'bullet': [], 'blitz': [], 'rapid': [], 'classical': [], 'daily': []},
     }
     context = {'platform': 'both', 'combined_payload': empty_payload}
 
@@ -49,13 +49,15 @@ def home_both(request):
             'bullet':    _dated(chesscom_data, 'bullet'),
             'blitz':     _dated(chesscom_data, 'blitz'),
             'rapid':     _dated(chesscom_data, 'rapid'),
-            'classical': [],   # chess.com API has no classical key (has daily, but it's correspondence)
+            'classical': [],                                  # chess.com has no classical
+            'daily':     _dated(chesscom_data, 'daily'),       # chess.com daily (correspondence)
         },
         'lichess': {
             'bullet':    _dated(lichess_data, 'bullet'),
             'blitz':     _dated(lichess_data, 'blitz'),
             'rapid':     _dated(lichess_data, 'rapid'),
             'classical': _dated(lichess_data, 'classical'),
+            'daily':     [],                                   # lichess has correspondence, not daily
         },
     }
     return render(request, 'analyzer/both.html', context)

@@ -55,7 +55,7 @@
                             <span class="games-tc"><b>{{ chesscom.rapid.wins|add:chesscom.rapid.losses|add:chesscom.rapid.draws }}</b><span class="tc-short">Ra</span><span class="tc-long">Rapid</span></span>
                             {% endif %}
                             {% if chesscom.daily %}
-                            <span class="games-tc" title="Chess.com Daily ≈ Classical"><b>{{ chesscom.daily.wins|add:chesscom.daily.losses|add:chesscom.daily.draws }}</b><span class="tc-short">Cl</span><span class="tc-long">Classical</span></span>
+                            <span class="games-tc"><b>{{ chesscom.daily.wins|add:chesscom.daily.losses|add:chesscom.daily.draws }}</b><span class="tc-short">Da</span><span class="tc-long">Daily</span></span>
                             {% endif %}
                         </span>
                     </div>
@@ -125,10 +125,21 @@
         <div class="combined-chart-head">
             <h2 class="combined-chart-title">Rating evolution</h2>
             <div class="combined-tc-selector" role="tablist" aria-label="Time control">
-                <button type="button" class="tc-btn" data-tc="bullet" role="tab">Bullet</button>
-                <button type="button" class="tc-btn active" data-tc="blitz" role="tab" aria-selected="true">Blitz</button>
-                <button type="button" class="tc-btn" data-tc="rapid" role="tab">Rapid</button>
-                <button type="button" class="tc-btn" data-tc="classical" role="tab">Classical</button>
+                <button type="button" class="tc-btn" data-tc="bullet" role="tab">
+                    <span class="tc-tab-long">Bullet</span><span class="tc-tab-short">Bu</span>
+                </button>
+                <button type="button" class="tc-btn active" data-tc="blitz" role="tab" aria-selected="true">
+                    <span class="tc-tab-long">Blitz</span><span class="tc-tab-short">Bl</span>
+                </button>
+                <button type="button" class="tc-btn" data-tc="rapid" role="tab">
+                    <span class="tc-tab-long">Rapid</span><span class="tc-tab-short">Ra</span>
+                </button>
+                <button type="button" class="tc-btn" data-tc="classical" role="tab">
+                    <span class="tc-tab-long">Classical</span><span class="tc-tab-short">Cl</span>
+                </button>
+                <button type="button" class="tc-btn" data-tc="daily" role="tab">
+                    <span class="tc-tab-long">Daily</span><span class="tc-tab-short">Da</span>
+                </button>
             </div>
         </div>
 
@@ -313,14 +324,21 @@
             });
         }
 
+        // Decide whether to use a fancy entry animation based on data size.
+        // Heavy datasets → skip the rise-from-bottom animation for snappier UX.
+        const totalPoints = ccData.length + lcData.length;
+        const heavy = totalPoints > 800;
+
         chart = new Chart(ctx, {
             type: 'line',
             data: { datasets: datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 1100, easing: 'easeInOutQuart' },
-                animations: {
+                parsing: false,                // data already in {x, y} form
+                normalized: true,              // chart.js can skip dedup
+                animation: heavy ? false : { duration: 1100, easing: 'easeInOutQuart' },
+                animations: heavy ? {} : {
                     y: { from: (ctx) => ctx.chart.scales.y.getPixelForValue(0) },
                 },
                 interaction: { mode: 'nearest', axis: 'x', intersect: false },
@@ -340,6 +358,11 @@
                 },
                 plugins: {
                     legend: { display: false },
+                    decimation: {
+                        enabled: true,
+                        algorithm: 'lttb',
+                        samples: 500,    // ~chart width in px, enough for smooth visuals
+                    },
                     tooltip: {
                         backgroundColor: 'rgba(20,22,28,0.96)',
                         borderColor: 'rgba(118,150,86,0.35)',
@@ -366,7 +389,7 @@
                     },
                 },
             },
-            plugins: [linesGlowPlugin, crosshairPlugin],
+            plugins: heavy ? [] : [linesGlowPlugin, crosshairPlugin],
         });
     }
 
