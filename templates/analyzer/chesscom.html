@@ -276,31 +276,28 @@
         const ctx = canvas.getContext('2d');
         if (chart) { chart.destroy(); chart = null; }
 
-        if (!ratings || ratings.length < 2) {
-            // Empty state — render placeholder text via Chart.js plugin
-            return;
-        }
+        if (!ratings || ratings.length < 2) return;
 
         const color = direction === 'down' ? '#e57878' : '#4caf50';
+        const heavy = ratings.length > 800;
 
-        // Gradient fill underneath the line
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 280);
-        gradient.addColorStop(0,   direction === 'down' ? 'rgba(229,120,120,0.40)' : 'rgba(76,175,80,0.40)');
-        gradient.addColorStop(1,   direction === 'down' ? 'rgba(229,120,120,0)'    : 'rgba(76,175,80,0)');
+        gradient.addColorStop(0, direction === 'down' ? 'rgba(229,120,120,0.40)' : 'rgba(76,175,80,0.40)');
+        gradient.addColorStop(1, direction === 'down' ? 'rgba(229,120,120,0)'    : 'rgba(76,175,80,0)');
 
-        const labels = ratings.map((_, i) => 'Game ' + (i + 1));
+        // {x, y} format — required for decimation plugin to work
+        const data = ratings.map((r, i) => ({ x: i + 1, y: r }));
 
         chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
                 datasets: [{
                     label: 'Rating',
-                    data: ratings,
+                    data: data,
                     borderColor: color,
                     backgroundColor: gradient,
                     fill: true,
-                    tension: 0.25,
+                    tension: heavy ? 0 : 0.25,    // straight lines render faster
                     borderWidth: 2.2,
                     pointRadius: 0,
                     pointHoverRadius: 5,
@@ -312,14 +309,20 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 600, easing: 'easeOutQuart' },
+                parsing: false,
+                normalized: true,
+                animation: heavy ? false : { duration: 600, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     x: {
+                        type: 'linear',
                         display: true,
                         grid:   { color: 'rgba(154,160,166,0.08)', drawTicks: false },
                         border: { display: false },
-                        ticks:  { color: '#9aa0a6', maxTicksLimit: 8, font: { size: 11 } },
+                        ticks:  {
+                            color: '#9aa0a6', maxTicksLimit: 8, font: { size: 11 },
+                            callback: (v) => 'Game ' + Math.round(v),
+                        },
                     },
                     y: {
                         display: true,
@@ -330,6 +333,11 @@
                 },
                 plugins: {
                     legend: { display: false },
+                    decimation: {
+                        enabled: true,
+                        algorithm: 'lttb',
+                        samples: 500,
+                    },
                     tooltip: {
                         backgroundColor: 'rgba(20,22,28,0.95)',
                         borderColor: 'rgba(154,160,166,0.2)',
@@ -342,8 +350,8 @@
                         bodyFont:   { size: 13, weight: '700' },
                         displayColors: false,
                         callbacks: {
-                            title: (items) => items[0].label,
-                            label: (item) => 'Rating: ' + item.formattedValue,
+                            title: (items) => 'Game ' + Math.round(items[0].parsed.x),
+                            label: (item) => 'Rating: ' + item.parsed.y,
                         },
                     },
                     zoom: {

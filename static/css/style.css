@@ -1881,6 +1881,17 @@ a {
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
     font-family: inherit;
+    white-space: nowrap;
+}
+
+/* Tab label switching — long names default, 2-letter on narrow screens */
+.tc-tab-long  { display: inline; }
+.tc-tab-short { display: none; }
+
+@media (max-width: 560px) {
+    .tc-tab-long  { display: none; }
+    .tc-tab-short { display: inline; }
+    .tc-btn { padding: 6px 10px; font-size: 12px; }
 }
 
 .tc-btn:hover { color: var(--text); }
