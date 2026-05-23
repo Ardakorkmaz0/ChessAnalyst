@@ -5,6 +5,7 @@ Docs: https://lichess.org/api
 No auth required. Rate limit generous. Single endpoint /rating-history
 returns full timeline per perf type — no archive walking needed.
 """
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import requests
@@ -18,6 +19,11 @@ HEADERS = {
 TIMEOUT = 10
 CACHE_TTL = 300         # 5 min
 SPARKLINE_POINTS = 30
+PARALLEL_WORKERS = 6
+
+# Reused HTTP session for connection pooling
+_session = requests.Session()
+_session.headers.update(HEADERS)
 
 
 # -----------------------------------------------------------------------
@@ -26,7 +32,7 @@ SPARKLINE_POINTS = 30
 
 def _get(url):
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        resp = _session.get(url, timeout=TIMEOUT)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
@@ -185,11 +191,20 @@ def get_player_data(username):
     if cached is not None:
         return cached
 
-    user = fetch_user(username)
-    if user is None:
-        return None
+    # Fetch user + rating history + 4 per-perf stats in parallel.
+    # 6 HTTP calls run concurrently → total time ≈ slowest single call.
+    perf_keys = ("bullet", "blitz", "rapid", "classical")
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+        f_user    = executor.submit(fetch_user, username)
+        f_history = executor.submit(fetch_rating_history, username)
+        f_perfs   = {pk: executor.submit(fetch_perf_stats, username, pk) for pk in perf_keys}
 
-    history = fetch_rating_history(username) or []
+        user = f_user.result()
+        if user is None:
+            return None
+        history = f_history.result() or []
+        perf_stats_map = {pk: f_perfs[pk].result() for pk in perf_keys}
+
     perfs = user.get("perfs") or {}
 
     def build(perf_key):
@@ -210,7 +225,13 @@ def get_player_data(username):
         block["min_rating"]       = min(ratings_all) if ratings_all else None
         block["max_rating"]       = max(ratings_all) if ratings_all else None
         block["best"] = max(ratings_all) if ratings_all else block.get("best")
-        _fill_wld(block, username, perf_key)
+        # W/L/D from the pre-fetched perf stats (no new HTTP call)
+        stats = perf_stats_map.get(perf_key)
+        if stats:
+            count = (stats.get("stat") or {}).get("count") or {}
+            block["wins"]   = count.get("win", 0)
+            block["losses"] = count.get("loss", 0)
+            block["draws"]  = count.get("draw", 0)
         return block
 
     profile = user.get("profile") or {}

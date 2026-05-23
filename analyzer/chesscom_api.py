@@ -4,6 +4,7 @@ Lightweight Chess.com Public API client.
 Docs: https://www.chess.com/news/view/published-data-api
 No auth required. Chess.com requires a real User-Agent header.
 """
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import requests
@@ -16,9 +17,14 @@ HEADERS = {
 }
 TIMEOUT = 10           # seconds
 CACHE_TTL = 300        # 5 min for the aggregated player blob
-ARCHIVE_TTL = 60 * 60  # 1 hour per monthly archive
-HISTORY_MONTHS = 12    # how far back we pull rating history
-SPARKLINE_POINTS = 30  # small card sparkline — last N games
+ARCHIVE_TTL = 60 * 60 * 24    # 24h per archive (past months never change)
+HISTORY_MONTHS = None         # None = pull entire account history
+SPARKLINE_POINTS = 30         # small card sparkline — last N games
+PARALLEL_WORKERS = 12         # concurrent HTTP fetches
+
+# Reused session = TCP/TLS handshake once, not per request
+_session = requests.Session()
+_session.headers.update(HEADERS)
 
 
 # -----------------------------------------------------------------------
@@ -27,7 +33,7 @@ SPARKLINE_POINTS = 30  # small card sparkline — last N games
 
 def _get(url):
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        resp = _session.get(url, timeout=TIMEOUT)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
@@ -166,21 +172,29 @@ def _ratings_from_archive(username, archive_url):
 
 def _extract_rating_history(username, months_back=HISTORY_MONTHS):
     """
-    Returns two parallel views over the last `months_back` months:
+    Returns two parallel views over the rating history:
       - `ratings`: {time_class: [rating, rating, ...]}            (chronological)
       - `dated`:   {time_class: [(ts_ms, rating), ...]}            (chronological)
+    If `months_back` is None, walks every archive on the account.
     """
     archives = fetch_archives(username)
     if not archives:
         empty = {tc: [] for tc in TIME_CLASSES}
         return {"ratings": empty, "dated": dict(empty)}
 
-    recent = archives[-months_back:]
+    recent = archives if months_back is None else archives[-months_back:]
     ratings = {tc: [] for tc in TIME_CLASSES}
     dated   = {tc: [] for tc in TIME_CLASSES}
 
-    for archive_url in recent:
-        archive_data = _ratings_from_archive(username, archive_url)
+    # Fetch all archives in parallel (cached ones return instantly).
+    # We keep order by reading results in the original `recent` order.
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+        archive_results = list(executor.map(
+            lambda url: _ratings_from_archive(username, url),
+            recent,
+        ))
+
+    for archive_data in archive_results:
         for tc in TIME_CLASSES:
             for ts, r in archive_data[tc]:
                 ratings[tc].append(r)
