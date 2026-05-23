@@ -20,7 +20,7 @@
     --icon-filter: invert(29%) sepia(9%) saturate(1150%) hue-rotate(176deg) brightness(90%) contrast(88%);
     --icon-hover-filter: invert(39%) sepia(23%) saturate(890%) hue-rotate(45deg) brightness(94%) contrast(88%);
     --chesscom-logo-filter: none;
-    --lichess-logo-filter: none;
+    --lichess-logo-filter: invert(1);     /* light theme → beyaz şah görünümü */
 }
 
 :root[data-theme="dark"] {
@@ -42,7 +42,7 @@
     --icon-filter: invert(70%);
     --icon-hover-filter: invert(85%) sepia(40%) saturate(400%) hue-rotate(45deg);
     --chesscom-logo-filter: none;
-    --lichess-logo-filter: invert(1);
+    --lichess-logo-filter: none;          /* dark theme → siyah taş görünümü (outlined silhouette) */
 }
 
 * {
@@ -108,13 +108,19 @@ a {
 
 .theme-icon {
     display: none;
+    color: var(--text);
+    font-family: "Segoe UI Symbol", "Noto Sans Symbols", "DejaVu Sans", Georgia, serif;
+    font-size: 29px;
+    font-weight: 400;
+    line-height: 1;
+    transform: translateY(-1px);
 }
 
-:root:not([data-theme="dark"]) .theme-icon-moon {
+:root:not([data-theme="dark"]) .theme-icon-black-king {
     display: block;
 }
 
-:root[data-theme="dark"] .theme-icon-sun {
+:root[data-theme="dark"] .theme-icon-white-king {
     display: block;
 }
 
@@ -184,6 +190,10 @@ a {
     display: none;
 }
 
+.platform-logo-mobile {
+    display: none;
+}
+
 :root[data-theme="dark"] .nav-chesscom .platform-logo-light {
     display: none;
 }
@@ -196,13 +206,19 @@ a {
     filter: var(--chesscom-logo-filter);
 }
 
-/* The Lichess icon is dark, so I flip it for the dark theme. */
+/* Lichess at: SVG kendi içinde koyu dolgu + açık kontur taşıyor.
+   Dark theme'de filter yok → siyah taş silüeti
+   Light theme'de invert(1) → beyaz şah silüeti (dolgu/kontur renkleri tersine döner) */
 .nav-lichess .platform-logo {
     filter: var(--lichess-logo-filter);
 }
 
 .platform-name {
     letter-spacing: 0.3px;
+}
+
+.lichess-name {
+    font-weight: 600;
 }
 
 .both-label {
@@ -383,6 +399,21 @@ a {
     .platform-logo {
         height: 30px;
         max-width: 100px;
+    }
+
+    .nav-chesscom .platform-logo-light,
+    :root[data-theme="dark"] .nav-chesscom .platform-logo-dark,
+    .nav-chesscom .platform-logo-dark {
+        display: none;
+    }
+
+    .nav-chesscom .platform-logo-mobile {
+        display: block;
+        height: 32px;
+    }
+
+    .nav-lichess .platform-name {
+        display: none;
     }
 
     .platform-name {
