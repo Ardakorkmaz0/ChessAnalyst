@@ -1,0 +1,97 @@
+{% load static %}
+<div class="rating-card{% if not data.current %} rating-card-empty{% endif %}{% if data.current %} rating-card-clickable{% endif %}"
+     {% if data.current %}
+     data-rating-detail
+     data-label="{{ label }}"
+     data-icon-key="{{ key }}"
+     data-current="{{ data.current }}"
+     data-best="{{ data.best|default:'' }}"
+     data-wins="{{ data.wins }}"
+     data-losses="{{ data.losses }}"
+     data-draws="{{ data.draws }}"
+     data-trend-pct="{{ data.trend_pct|default:'' }}"
+     data-trend-direction="{{ data.trend_direction|default:'' }}"
+     data-history="[{{ data.raw_ratings|join:',' }}]"
+     role="button"
+     tabindex="0"
+     {% endif %}>
+    <div class="rating-header">
+        {% if key == 'bullet' %}
+            <svg class="rating-icon rating-icon-bullet" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+        {% elif key == 'blitz' %}
+            <svg class="rating-icon rating-icon-blitz" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+        {% elif key == 'rapid' %}
+            <svg class="rating-icon rating-icon-rapid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+            </svg>
+        {% elif key == 'daily' %}
+            <svg class="rating-icon rating-icon-daily" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            </svg>
+        {% elif key == 'classical' %}
+            <svg class="rating-icon rating-icon-classical" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 22h14"/>
+                <path d="M5 2h14"/>
+                <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22z"/>
+                <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2z"/>
+            </svg>
+        {% endif %}
+        <span>{{ label }}</span>
+    </div>
+
+    {% if data.current %}
+        <div class="rating-row">
+            <span class="rating-value">{{ data.current }}</span>
+
+            {% if data.sparkline_points %}
+            <svg class="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="sparkGrad-{{ key }}" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%"   stop-color="{% if data.trend_direction == 'down' %}#e57878{% else %}#4caf50{% endif %}" stop-opacity="0.35"/>
+                        <stop offset="100%" stop-color="{% if data.trend_direction == 'down' %}#e57878{% else %}#4caf50{% endif %}" stop-opacity="0"/>
+                    </linearGradient>
+                </defs>
+                <path d="{{ data.sparkline_area }}" fill="url(#sparkGrad-{{ key }})"/>
+                <polyline points="{{ data.sparkline_points }}"
+                          fill="none"
+                          stroke="{% if data.trend_direction == 'down' %}#e57878{% else %}#4caf50{% endif %}"
+                          stroke-width="1.8"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"/>
+            </svg>
+            {% endif %}
+        </div>
+
+        <div class="rating-footer">
+            {% if data.trend_pct is not None %}
+            <span class="rating-trend trend-{{ data.trend_direction }}">
+                {% if data.trend_direction == 'up' %}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 15 12 9 18 15"/>
+                    </svg>
+                {% else %}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                {% endif %}
+                {{ data.trend_pct }}%
+            </span>
+            {% endif %}
+
+            {% if data.best %}
+                <span class="rating-best">Best {{ data.best }}</span>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="rating-row">
+            <span class="rating-value rating-empty">—</span>
+        </div>
+        <div class="rating-empty-label">Not played</div>
+    {% endif %}
+</div>

@@ -3,5 +3,367 @@
 {% block title %}Chess.com Analysis — ChessAnalyst{% endblock %}
 
 {% block content %}
+<section class="stats-page">
 
+    {% if state == 'guest' %}
+        <div class="empty-state">
+            <h2>Sign in to see your Chess.com stats</h2>
+            <p>Connect your account and we'll pull your rating, history, and openings from chess.com.</p>
+            <a href="{% url 'login' %}" class="cta-button">Sign in</a>
+        </div>
+
+    {% elif state == 'no_username' %}
+        <div class="empty-state">
+            <h2>Add your Chess.com username</h2>
+            <p>We need your public chess.com username to fetch your stats.</p>
+            <a href="{% url 'analyzer:profile' %}" class="cta-button">Go to profile</a>
+        </div>
+
+    {% elif state == 'not_found' %}
+        <div class="empty-state">
+            <h2>Couldn't find <code>{{ attempted_username }}</code> on Chess.com</h2>
+            <p>The API returned 404 or could not be reached. Double-check the username on your profile.</p>
+            <a href="{% url 'analyzer:profile' %}" class="cta-button">Edit profile</a>
+        </div>
+
+    {% else %}
+
+    {# ============ Profile header ============ #}
+    <div class="profile-header">
+        {% if player.avatar %}
+            <img src="{{ player.avatar }}" alt="" class="profile-avatar-img">
+        {% else %}
+            <div class="profile-avatar">{{ player.username|first|upper }}</div>
+        {% endif %}
+
+        <div class="profile-info">
+            <div class="profile-name-row">
+                <h1 class="profile-name">
+                    {% if player.title %}<span class="profile-title">{{ player.title }}</span>{% endif %}
+                    {{ player.display_name }}
+                </h1>
+                {% if player.status == 'premium' or player.status == 'staff' or player.status == 'mod' %}
+                    <span class="profile-badge">{{ player.status|upper }}</span>
+                {% endif %}
+            </div>
+
+            <div class="profile-meta">
+                {% if player.flag_url %}
+                <span class="meta-item">
+                    <img src="{{ player.flag_url }}" alt="{{ player.country_name|default:player.country_code }}" class="country-flag">
+                    {{ player.country_name|default:player.country_code }}
+                </span>
+                <span class="meta-divider">·</span>
+                {% endif %}
+
+                {% if player.joined %}
+                <span class="meta-item">
+                    <svg class="meta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2"/>
+                        <path d="M16 2v4M8 2v4M3 10h18"/>
+                    </svg>
+                    Member since {{ player.joined }}
+                </span>
+                <span class="meta-divider">·</span>
+                {% endif %}
+
+                <span class="meta-item">
+                    <svg class="meta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    {{ player.total_games }} Games
+                </span>
+
+                {% if player.last_online %}
+                <span class="meta-divider">·</span>
+                <span class="meta-item">
+                    <span class="online-dot"></span>
+                    Last online: {{ player.last_online }}
+                </span>
+                {% endif %}
+
+                {% if player.profile_url %}
+                <span class="meta-divider">·</span>
+                <a class="meta-item profile-link-external" href="{{ player.profile_url }}" target="_blank" rel="noopener">
+                    View on chess.com →
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ============ Rating cards ============ #}
+    <div class="rating-cards">
+
+        {% include "analyzer/_rating_card.html" with key="bullet" label="Bullet" data=player.bullet %}
+        {% include "analyzer/_rating_card.html" with key="blitz"  label="Blitz"  data=player.blitz  %}
+        {% include "analyzer/_rating_card.html" with key="rapid"  label="Rapid"  data=player.rapid  %}
+        {% include "analyzer/_rating_card.html" with key="daily"  label="Daily"  data=player.daily  %}
+
+    </div>
+
+    {% endif %}
+
+</section>
+
+{# ============ Rating detail modal ============ #}
+<div class="modal" id="rating-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content" role="document">
+        <button class="modal-close" type="button" data-modal-close aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+
+        <div class="modal-header">
+            <span class="modal-icon" id="modal-icon"></span>
+            <h2 class="modal-title" id="modal-title">—</h2>
+        </div>
+
+        <div class="modal-stats-grid">
+            <div class="modal-stat">
+                <span class="modal-stat-label">Current</span>
+                <span class="modal-stat-value" id="modal-current">—</span>
+            </div>
+            <div class="modal-stat">
+                <span class="modal-stat-label">Best</span>
+                <span class="modal-stat-value" id="modal-best">—</span>
+            </div>
+            <div class="modal-stat">
+                <span class="modal-stat-label">Trend</span>
+                <span class="modal-stat-value" id="modal-trend">—</span>
+            </div>
+            <div class="modal-stat">
+                <span class="modal-stat-label">Games shown</span>
+                <span class="modal-stat-value" id="modal-games">—</span>
+            </div>
+        </div>
+
+        <div class="modal-chart-wrap">
+            <div class="modal-chart-toolbar">
+                <span class="modal-chart-hint">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    Scroll to zoom · Drag to pan
+                </span>
+                <button class="modal-chart-reset" type="button" id="modal-reset-zoom">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="1 4 1 10 7 10"/>
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                    </svg>
+                    Reset zoom
+                </button>
+            </div>
+            <div class="modal-chart-canvas">
+                <canvas id="modal-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="modal-record">
+            <div class="modal-record-bar">
+                <span class="record-seg record-win"  id="modal-bar-win"></span>
+                <span class="record-seg record-loss" id="modal-bar-loss"></span>
+                <span class="record-seg record-draw" id="modal-bar-draw"></span>
+            </div>
+            <div class="modal-record-text">
+                <span><b id="modal-wins">0</b> Wins</span>
+                <span class="record-sep">·</span>
+                <span><b id="modal-losses">0</b> Losses</span>
+                <span class="record-sep">·</span>
+                <span><b id="modal-draws">0</b> Draws</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+
+<script>
+(function () {
+    const modal = document.getElementById('rating-modal');
+    if (!modal) return;
+
+    const cards = document.querySelectorAll('[data-rating-detail]');
+    const closers = modal.querySelectorAll('[data-modal-close]');
+    const resetBtn = document.getElementById('modal-reset-zoom');
+
+    let chart = null;   // Chart.js instance
+
+    function openModal(card) {
+        const label    = card.dataset.label;
+        const current  = card.dataset.current;
+        const best     = card.dataset.best;
+        const wins     = parseInt(card.dataset.wins   || '0', 10);
+        const losses   = parseInt(card.dataset.losses || '0', 10);
+        const draws    = parseInt(card.dataset.draws  || '0', 10);
+        const history  = JSON.parse(card.dataset.history || '[]');
+        const trend    = card.dataset.trendPct;
+        const trendDir = card.dataset.trendDirection;
+
+        // Header
+        document.getElementById('modal-title').textContent   = label;
+        document.getElementById('modal-current').textContent = current || '—';
+        document.getElementById('modal-best').textContent    = best || '—';
+        document.getElementById('modal-games').textContent   = history.length;
+
+        const trendEl = document.getElementById('modal-trend');
+        if (trend && trendDir) {
+            const arrow = trendDir === 'up' ? '↑' : '↓';
+            trendEl.textContent = arrow + ' ' + trend + '%';
+            trendEl.style.color = trendDir === 'up' ? '#4caf50' : '#e57878';
+        } else {
+            trendEl.textContent = '—';
+            trendEl.style.color = '';
+        }
+
+        // Icon (clone from clicked card)
+        const cardIcon = card.querySelector('.rating-icon');
+        document.getElementById('modal-icon').innerHTML = cardIcon ? cardIcon.outerHTML : '';
+
+        // W/L/D bar
+        document.getElementById('modal-bar-win').style.flex  = wins;
+        document.getElementById('modal-bar-loss').style.flex = losses;
+        document.getElementById('modal-bar-draw').style.flex = draws;
+        document.getElementById('modal-wins').textContent   = wins.toLocaleString();
+        document.getElementById('modal-losses').textContent = losses.toLocaleString();
+        document.getElementById('modal-draws').textContent  = draws.toLocaleString();
+
+        // Show modal
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+
+        // Build chart (after modal visible so canvas has dimensions)
+        buildChart(history, trendDir);
+    }
+
+    function closeModal() {
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        if (chart) {
+            chart.destroy();
+            chart = null;
+        }
+    }
+
+    function buildChart(ratings, direction) {
+        const canvas = document.getElementById('modal-chart');
+        const ctx = canvas.getContext('2d');
+        if (chart) { chart.destroy(); chart = null; }
+
+        if (!ratings || ratings.length < 2) {
+            // Empty state — render placeholder text via Chart.js plugin
+            return;
+        }
+
+        const color = direction === 'down' ? '#e57878' : '#4caf50';
+
+        // Gradient fill underneath the line
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 280);
+        gradient.addColorStop(0,   direction === 'down' ? 'rgba(229,120,120,0.40)' : 'rgba(76,175,80,0.40)');
+        gradient.addColorStop(1,   direction === 'down' ? 'rgba(229,120,120,0)'    : 'rgba(76,175,80,0)');
+
+        const labels = ratings.map((_, i) => 'Game ' + (i + 1));
+
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Rating',
+                    data: ratings,
+                    borderColor: color,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.25,
+                    borderWidth: 2.2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: color,
+                    pointHoverBorderColor: '#ffffff',
+                    pointHoverBorderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 600, easing: 'easeOutQuart' },
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        display: true,
+                        grid:   { color: 'rgba(154,160,166,0.08)', drawTicks: false },
+                        border: { display: false },
+                        ticks:  { color: '#9aa0a6', maxTicksLimit: 8, font: { size: 11 } },
+                    },
+                    y: {
+                        display: true,
+                        grid:   { color: 'rgba(154,160,166,0.10)', drawTicks: false },
+                        border: { display: false },
+                        ticks:  { color: '#9aa0a6', font: { size: 11 }, padding: 8 },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(20,22,28,0.95)',
+                        borderColor: 'rgba(154,160,166,0.2)',
+                        borderWidth: 1,
+                        padding: 10,
+                        cornerRadius: 8,
+                        titleColor: '#e8eaed',
+                        bodyColor: '#e8eaed',
+                        titleFont:  { size: 12, weight: '600' },
+                        bodyFont:   { size: 13, weight: '700' },
+                        displayColors: false,
+                        callbacks: {
+                            title: (items) => items[0].label,
+                            label: (item) => 'Rating: ' + item.formattedValue,
+                        },
+                    },
+                    zoom: {
+                        pan:  { enabled: true, mode: 'x' },
+                        zoom: {
+                            wheel: { enabled: true, speed: 0.08 },
+                            pinch: { enabled: true },
+                            mode: 'x',
+                        },
+                        limits: {
+                            x: { minRange: 5 },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    // Card click + keyboard
+    cards.forEach(card => {
+        card.addEventListener('click', () => openModal(card));
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openModal(card);
+            }
+        });
+    });
+
+    closers.forEach(el => el.addEventListener('click', closeModal));
+    resetBtn.addEventListener('click', () => { if (chart) chart.resetZoom(); });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+})();
+</script>
 {% endblock %}

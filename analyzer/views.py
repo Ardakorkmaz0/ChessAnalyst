@@ -1,8 +1,9 @@
 from django.contrib.auth import login
-from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import redirect, render
 
+from . import chesscom_api, lichess_api
 from .forms import UserProfileForm
 from .models import UserProfile
 
@@ -12,11 +13,63 @@ def home_both(request):
 
 
 def home_chesscom(request):
-    return render(request, 'analyzer/chesscom.html', {'platform': 'chesscom'})
+    """
+    Chess.com stats page.
+
+    States the template handles:
+      - user not authenticated      → ask to sign in
+      - no chess.com username saved → ask to set it on /profile
+      - api lookup failed/404       → error card
+      - success                     → render real data
+    """
+    context = {'platform': 'chesscom'}
+
+    if not request.user.is_authenticated:
+        context['state'] = 'guest'
+        return render(request, 'analyzer/chesscom.html', context)
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    chesscom_username = (profile.chesscom_username or '').strip()
+
+    if not chesscom_username:
+        context['state'] = 'no_username'
+        return render(request, 'analyzer/chesscom.html', context)
+
+    data = chesscom_api.get_player_data(chesscom_username)
+    if data is None:
+        context['state'] = 'not_found'
+        context['attempted_username'] = chesscom_username
+        return render(request, 'analyzer/chesscom.html', context)
+
+    context['state'] = 'ok'
+    context['player'] = data
+    return render(request, 'analyzer/chesscom.html', context)
 
 
 def home_lichess(request):
-    return render(request, 'analyzer/lichess.html', {'platform': 'lichess'})
+    """Lichess stats page — mirrors home_chesscom's state machine."""
+    context = {'platform': 'lichess'}
+
+    if not request.user.is_authenticated:
+        context['state'] = 'guest'
+        return render(request, 'analyzer/lichess.html', context)
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    lichess_username = (profile.lichess_username or '').strip()
+
+    if not lichess_username:
+        context['state'] = 'no_username'
+        return render(request, 'analyzer/lichess.html', context)
+
+    data = lichess_api.get_player_data(lichess_username)
+    if data is None:
+        context['state'] = 'not_found'
+        context['attempted_username'] = lichess_username
+        return render(request, 'analyzer/lichess.html', context)
+
+    context['state'] = 'ok'
+    context['player'] = data
+    return render(request, 'analyzer/lichess.html', context)
 
 
 def signup(request):
