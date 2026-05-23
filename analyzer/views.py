@@ -1,6 +1,10 @@
 from django.contrib.auth import login
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+
+from .forms import UserProfileForm
+from .models import UserProfile
 
 
 def home_both(request):
@@ -25,3 +29,19 @@ def signup(request):
     else:
         form = UserCreationForm()
     return render(request, 'registration/signup.html', {'form': form})
+
+
+@login_required
+def profile(request):
+    user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    saved = False
+
+    if request.method == 'POST':
+        form = UserProfileForm(request.POST, instance=user_profile)
+        if form.is_valid():
+            form.save()
+            saved = True
+    else:
+        form = UserProfileForm(instance=user_profile)
+
+    return render(request, 'analyzer/profile.html', {'form': form, 'saved': saved})

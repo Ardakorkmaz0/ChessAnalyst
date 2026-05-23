@@ -54,8 +54,10 @@
 
         {% if user.is_authenticated %}
             <div class="nav-user">
-                <span class="user-initial" aria-hidden="true" title="Signed in as {{ user.username }}">{{ user.username|first|upper }}</span>
-                <span class="user-name">{{ user.username }}</span>
+                <a href="{% url 'analyzer:profile' %}" class="profile-link" title="Profile">
+                    <span class="user-initial" aria-hidden="true">{{ user.username|first|upper }}</span>
+                    <span class="user-name">{{ user.username }}</span>
+                </a>
                 <form method="post" action="{% url 'logout' %}" class="logout-form">
                     {% csrf_token %}
                     <button type="submit" class="nav-login logout-button" title="Sign out" aria-label="Sign out">

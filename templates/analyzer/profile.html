@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Profile - ChessAnalyst{% endblock %}
+
+{% block content %}
+<section class="profile-wrapper">
+    <div class="profile-card">
+        <h1 class="profile-title">Profile</h1>
+        <p class="profile-subtitle">Signed in as {{ user.username }}</p>
+
+        {% if saved %}
+            <div class="auth-success">Profile saved.</div>
+        {% endif %}
+
+        <form method="post" class="auth-form profile-form">
+            {% csrf_token %}
+
+            <div class="profile-platform-section profile-platform-chesscom">
+                <div class="profile-platform-heading">
+                    <img src="{% static 'images/chesscom.png' %}" alt="Chess.com" class="profile-platform-logo profile-logo-light">
+                    <img src="{% static 'images/chesscom_logo_wordmark_outline.svg' %}" alt="Chess.com" class="profile-platform-logo profile-logo-dark">
+                </div>
+
+                <div class="profile-field-row">
+                    <div class="profile-input-group">
+                        <label for="{{ form.chesscom_username.id_for_label }}">{{ form.chesscom_username.label }}</label>
+                        {{ form.chesscom_username }}
+                        {% for error in form.chesscom_username.errors %}
+                            <div class="auth-error">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="profile-preview is-empty"
+                         data-profile-preview="chesscom"
+                         data-fallback-src="{% static 'images/chesscom_logo_pawn.svg' %}">
+                        <img src="{% static 'images/chesscom_logo_pawn.svg' %}" alt="" class="profile-preview-avatar" data-profile-avatar>
+                        <div class="profile-preview-copy">
+                            <span class="profile-preview-status" data-profile-status>Not linked</span>
+                            <a href="#" class="profile-preview-link" data-profile-link target="_blank" rel="noreferrer">Open profile</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="profile-platform-section profile-platform-lichess">
+                <div class="profile-platform-heading">
+                    <img src="{% static 'images/lichess.svg' %}" alt="Lichess" class="profile-platform-logo profile-lichess-logo">
+                    <span class="profile-lichess-wordmark">lichess.org</span>
+                </div>
+
+                <div class="profile-field-row">
+                    <div class="profile-input-group">
+                        <label for="{{ form.lichess_username.id_for_label }}">{{ form.lichess_username.label }}</label>
+                        {{ form.lichess_username }}
+                        {% for error in form.lichess_username.errors %}
+                            <div class="auth-error">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="profile-preview is-empty"
+                         data-profile-preview="lichess"
+                         data-fallback-src="{% static 'images/lichess.svg' %}">
+                        <img src="{% static 'images/lichess.svg' %}" alt="" class="profile-preview-avatar profile-preview-lichess" data-profile-avatar>
+                        <div class="profile-preview-copy">
+                            <span class="profile-preview-status" data-profile-status>Not linked</span>
+                            <a href="#" class="profile-preview-link" data-profile-link target="_blank" rel="noreferrer">Open profile</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="cta-button">Save profile</button>
+        </form>
+    </div>
+</section>
+
+<script>
+    (function () {
+        const checks = [
+            {
+                input: document.getElementById('id_chesscom_username'),
+                preview: document.querySelector('[data-profile-preview="chesscom"]'),
+                buildUrl: function (username) {
+                    return 'https://api.chess.com/pub/player/' + encodeURIComponent(username.toLowerCase());
+                },
+                getAvatar: function (data) {
+                    return data.avatar || '';
+                },
+                getName: function (data, username) {
+                    return data.username || username;
+                },
+                getProfileUrl: function (data, username) {
+                    return data.url || ('https://www.chess.com/member/' + encodeURIComponent(username));
+                }
+            },
+            {
+                input: document.getElementById('id_lichess_username'),
+                preview: document.querySelector('[data-profile-preview="lichess"]'),
+                buildUrl: function (username) {
+                    return 'https://lichess.org/api/user/' + encodeURIComponent(username);
+                },
+                getAvatar: function (data) {
+                    return data.profile && data.profile.avatar ? data.profile.avatar : '';
+                },
+                getName: function (data, username) {
+                    return data.username || username;
+                },
+                getProfileUrl: function (data, username) {
+                    return data.url || ('https://lichess.org/@/' + encodeURIComponent(username));
+                }
+            }
+        ];
+
+        function setState(check, state, text, avatarSrc, profileUrl) {
+            const preview = check.preview;
+            const avatar = preview.querySelector('[data-profile-avatar]');
+            const status = preview.querySelector('[data-profile-status]');
+            const link = preview.querySelector('[data-profile-link]');
+            const fallbackSrc = preview.dataset.fallbackSrc;
+
+            preview.classList.remove('is-empty', 'is-loading', 'is-found', 'is-error');
+            preview.classList.add('is-' + state);
+            avatar.src = avatarSrc || fallbackSrc;
+            status.textContent = text;
+
+            if (profileUrl) {
+                link.href = profileUrl;
+                link.hidden = false;
+            } else {
+                link.hidden = true;
+            }
+        }
+
+        function checkUsername(check) {
+            const username = check.input.value.trim();
+
+            if (!username) {
+                setState(check, 'empty', 'Not linked');
+                return;
+            }
+
+            setState(check, 'loading', 'Checking...');
+
+            fetch(check.buildUrl(username), { headers: { Accept: 'application/json' } })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Not found');
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    const displayName = check.getName(data, username);
+                    const avatar = check.getAvatar(data);
+                    const profileUrl = check.getProfileUrl(data, username);
+                    setState(check, 'found', 'Found: ' + displayName, avatar, profileUrl);
+                })
+                .catch(function () {
+                    setState(check, 'error', 'Not found');
+                });
+        }
+
+        checks.forEach(function (check) {
+            if (!check.input || !check.preview) {
+                return;
+            }
+
+            let timer = null;
+            check.input.addEventListener('input', function () {
+                window.clearTimeout(timer);
+                timer = window.setTimeout(function () {
+                    checkUsername(check);
+                }, 600);
+            });
+
+            check.input.addEventListener('blur', function () {
+                window.clearTimeout(timer);
+                checkUsername(check);
+            });
+
+            checkUsername(check);
+        });
+    })();
+</script>
+{% endblock %}

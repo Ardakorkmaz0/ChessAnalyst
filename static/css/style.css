@@ -20,7 +20,9 @@
     --icon-filter: invert(29%) sepia(9%) saturate(1150%) hue-rotate(176deg) brightness(90%) contrast(88%);
     --icon-hover-filter: invert(39%) sepia(23%) saturate(890%) hue-rotate(45deg) brightness(94%) contrast(88%);
     --chesscom-logo-filter: none;
-    --lichess-logo-filter: invert(1);     /* light theme → beyaz şah görünümü */
+    --lichess-logo-filter: invert(1);     /* Light theme shows the white-style Lichess mark. */
+    --profile-chesscom-preview-filter: none;
+    --profile-lichess-preview-filter: none;
 }
 
 :root[data-theme="dark"] {
@@ -42,7 +44,9 @@
     --icon-filter: invert(70%);
     --icon-hover-filter: invert(85%) sepia(40%) saturate(400%) hue-rotate(45deg);
     --chesscom-logo-filter: none;
-    --lichess-logo-filter: none;          /* dark theme → siyah taş görünümü (outlined silhouette) */
+    --lichess-logo-filter: none;          /* Dark theme keeps the original Lichess mark. */
+    --profile-chesscom-preview-filter: none;
+    --profile-lichess-preview-filter: invert(1);
 }
 
 * {
@@ -206,9 +210,7 @@ a {
     filter: var(--chesscom-logo-filter);
 }
 
-/* Lichess at: SVG kendi içinde koyu dolgu + açık kontur taşıyor.
-   Dark theme'de filter yok → siyah taş silüeti
-   Light theme'de invert(1) → beyaz şah silüeti (dolgu/kontur renkleri tersine döner) */
+/* The Lichess SVG has its own fill and outline, so the theme only flips the filter. */
 .nav-lichess .platform-logo {
     filter: var(--lichess-logo-filter);
 }
@@ -469,6 +471,18 @@ a {
     border-left: 1px solid var(--border);
     padding: 0 4px 0 12px;
     gap: 10px;
+}
+
+.profile-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 100%;
+    color: inherit;
+}
+
+.profile-link:hover .user-name {
+    color: var(--accent);
 }
 
 /* Simple circle avatar with the first letter */
@@ -757,6 +771,10 @@ a {
     transition: border-color 0.15s ease;
 }
 
+.profile-form input {
+    height: 46px;
+}
+
 .auth-form input:focus {
     outline: none;
     border-color: var(--accent);
@@ -775,6 +793,16 @@ a {
     border-radius: 8px;
     font-size: 14px;
     margin: 6px 0;
+}
+
+.auth-success {
+    background: rgba(111, 146, 80, 0.12);
+    border: 1px solid rgba(111, 146, 80, 0.35);
+    color: var(--accent);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin: 0 0 18px;
 }
 
 .auth-help {
@@ -798,4 +826,184 @@ a {
 
 .auth-switch a:hover {
     text-decoration: underline;
+}
+
+/* Profile page */
+
+.profile-wrapper {
+    display: flex;
+    justify-content: center;
+    min-height: calc(100vh - 64px);
+    padding: 56px 16px;
+}
+
+.profile-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: var(--shadow);
+}
+
+.profile-title {
+    font-size: 26px;
+    margin-bottom: 6px;
+    text-align: center;
+}
+
+.profile-subtitle {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.profile-platform-section {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+}
+
+.profile-platform-heading {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.profile-platform-logo {
+    display: block;
+    width: 172px;
+    height: 38px;
+    object-fit: contain;
+    object-position: left center;
+}
+
+.profile-logo-dark {
+    display: none;
+}
+
+:root[data-theme="dark"] .profile-logo-light {
+    display: none;
+}
+
+:root[data-theme="dark"] .profile-logo-dark {
+    display: block;
+}
+
+.profile-lichess-logo {
+    width: 38px;
+    height: 38px;
+    filter: var(--lichess-logo-filter);
+}
+
+.profile-lichess-wordmark {
+    margin-left: 10px;
+    color: var(--text-muted);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 38px;
+}
+
+.profile-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 20px;
+    align-items: end;
+}
+
+.profile-input-group {
+    min-width: 0;
+}
+
+.profile-preview {
+    height: 62px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--field-bg);
+    min-width: 0;
+}
+
+.profile-preview-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.profile-preview[data-profile-preview="chesscom"] .profile-preview-avatar {
+    filter: var(--profile-chesscom-preview-filter);
+}
+
+.profile-preview-lichess {
+    object-fit: contain;
+    padding: 7px;
+    filter: var(--profile-lichess-preview-filter);
+}
+
+.profile-preview-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.profile-preview-status {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-preview-link {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.profile-preview.is-found .profile-preview-status {
+    color: var(--accent);
+}
+
+.profile-preview.is-error .profile-preview-status {
+    color: #e57878;
+}
+
+.profile-preview.is-empty {
+    opacity: 0.78;
+}
+
+.profile-preview.is-empty .profile-preview-avatar {
+    opacity: 0.72;
+}
+
+@media (max-width: 640px) {
+    .profile-card {
+        padding: 28px 18px;
+    }
+
+    .profile-platform-section {
+        padding: 18px 16px;
+    }
+
+    .profile-field-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .profile-preview {
+        align-self: stretch;
+    }
 }
