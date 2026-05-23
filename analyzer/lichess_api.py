@@ -101,6 +101,26 @@ def _parse_history_for(history, perf_name):
     return []
 
 
+def _parse_dated_history_for(history, perf_name):
+    """Returns [(timestamp_ms, rating), ...] for the named perf."""
+    target = perf_name.lower()
+    for series in history or []:
+        if (series.get("name") or "").lower() != target:
+            continue
+        out = []
+        for pt in series.get("points", []):
+            if len(pt) < 4:
+                continue
+            y, m_0idx, d, rating = pt[0], pt[1], pt[2], pt[3]
+            try:
+                ts = datetime(y, m_0idx + 1, d, tzinfo=timezone.utc).timestamp() * 1000
+            except (ValueError, OverflowError):
+                continue
+            out.append([int(ts), rating])
+        return out
+    return []
+
+
 def _humanize_seen_at(ms_ts):
     if not ms_ts:
         return None
@@ -177,6 +197,7 @@ def get_player_data(username):
         if not block:
             return None
         ratings_all = _parse_history_for(history, perf_key)
+        dated_all   = _parse_dated_history_for(history, perf_key)
         ratings_small = ratings_all[-SPARKLINE_POINTS:]
         pct, direction = _calc_trend(ratings_small)
         block["sparkline_points"] = _sparkline_points(ratings_small)
@@ -185,11 +206,10 @@ def get_player_data(username):
         block["trend_direction"]  = direction
         block["games_count"]      = len(ratings_all)
         block["raw_ratings"]      = ratings_all
+        block["dated_history"]    = dated_all
         block["min_rating"]       = min(ratings_all) if ratings_all else None
         block["max_rating"]       = max(ratings_all) if ratings_all else None
-        # Lichess: no per-perf best in /user, derive from history high
         block["best"] = max(ratings_all) if ratings_all else block.get("best")
-        # W/L/D requires an extra call per perf — fill in-place
         _fill_wld(block, username, perf_key)
         return block
 

@@ -9,7 +9,56 @@ from .models import UserProfile
 
 
 def home_both(request):
-    return render(request, 'analyzer/both.html', {'platform': 'both'})
+    """Combined view — chess.com on the left, lichess on the right."""
+    # Always pass an empty payload skeleton so the JSON script tag is valid
+    # even on guest/empty states (the JS exits if there's no chart canvas).
+    empty_payload = {
+        'chesscom': {'bullet': [], 'blitz': [], 'rapid': [], 'classical': []},
+        'lichess':  {'bullet': [], 'blitz': [], 'rapid': [], 'classical': []},
+    }
+    context = {'platform': 'both', 'combined_payload': empty_payload}
+
+    if not request.user.is_authenticated:
+        context['state'] = 'guest'
+        return render(request, 'analyzer/both.html', context)
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    cc_username = (profile.chesscom_username or '').strip()
+    lc_username = (profile.lichess_username or '').strip()
+
+    if not cc_username and not lc_username:
+        context['state'] = 'no_usernames'
+        return render(request, 'analyzer/both.html', context)
+
+    context['state'] = 'ok'
+    chesscom_data = chesscom_api.get_player_data(cc_username) if cc_username else None
+    lichess_data  = lichess_api.get_player_data(lc_username)  if lc_username else None
+    context['chesscom'] = chesscom_data
+    context['lichess']  = lichess_data
+
+    def _dated(player, tc):
+        if not player:
+            return []
+        block = player.get(tc)
+        if not block:
+            return []
+        return block.get('dated_history') or []
+
+    context['combined_payload'] = {
+        'chesscom': {
+            'bullet':    _dated(chesscom_data, 'bullet'),
+            'blitz':     _dated(chesscom_data, 'blitz'),
+            'rapid':     _dated(chesscom_data, 'rapid'),
+            'classical': [],   # chess.com API has no classical key (has daily, but it's correspondence)
+        },
+        'lichess': {
+            'bullet':    _dated(lichess_data, 'bullet'),
+            'blitz':     _dated(lichess_data, 'blitz'),
+            'rapid':     _dated(lichess_data, 'rapid'),
+            'classical': _dated(lichess_data, 'classical'),
+        },
+    }
+    return render(request, 'analyzer/both.html', context)
 
 
 def home_chesscom(request):

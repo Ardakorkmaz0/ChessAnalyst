@@ -1,7 +1,408 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}ChessAnalyst — Unified Chess Analytics{% endblock %}
 
 {% block content %}
+<section class="stats-page">
 
+    {% if state == 'guest' %}
+        <div class="empty-state">
+            <h2>Sign in to compare your accounts</h2>
+            <p>Connect both Chess.com and Lichess to see a unified view of your rating progress.</p>
+            <a href="{% url 'login' %}" class="cta-button">Sign in</a>
+        </div>
+
+    {% elif state == 'no_usernames' %}
+        <div class="empty-state">
+            <h2>Add at least one chess account</h2>
+            <p>Set your Chess.com and/or Lichess username on your profile to see this page populated.</p>
+            <a href="{% url 'analyzer:profile' %}" class="cta-button">Go to profile</a>
+        </div>
+
+    {% else %}
+
+    {# ============ Two-up profile header ============ #}
+    <div class="both-profiles">
+
+        {# ----- Left: Chess.com ----- #}
+        <div class="profile-card-mini profile-card-chesscom">
+            {% if chesscom %}
+                {% if chesscom.avatar %}
+                    <img src="{{ chesscom.avatar }}" alt="" class="profile-avatar-img profile-avatar-mini">
+                {% else %}
+                    <div class="profile-avatar profile-avatar-mini">{{ chesscom.username|first|upper }}</div>
+                {% endif %}
+                <div class="profile-card-info">
+                    <div class="profile-card-platform">
+                        <img src="{% static 'images/chesscom.png' %}" alt="Chess.com" class="platform-mini-logo platform-mini-logo-light">
+                        <img src="{% static 'images/chesscom_logo_wordmark_outline.svg' %}" alt="Chess.com" class="platform-mini-logo platform-mini-logo-dark">
+                    </div>
+                    <h3 class="profile-card-name">
+                        {% if chesscom.title %}<span class="profile-title">{{ chesscom.title }}</span>{% endif %}
+                        {{ chesscom.display_name }}
+                    </h3>
+                    <div class="profile-card-meta">
+                        {% if chesscom.flag_url %}<img src="{{ chesscom.flag_url }}" alt="" class="country-flag">{% endif %}
+                        <span class="games-breakdown">
+                            {% if chesscom.bullet %}
+                            <span class="games-tc"><b>{{ chesscom.bullet.wins|add:chesscom.bullet.losses|add:chesscom.bullet.draws }}</b><span class="tc-short">Bu</span><span class="tc-long">Bullet</span></span>
+                            {% endif %}
+                            {% if chesscom.blitz %}
+                            <span class="games-tc"><b>{{ chesscom.blitz.wins|add:chesscom.blitz.losses|add:chesscom.blitz.draws }}</b><span class="tc-short">Bl</span><span class="tc-long">Blitz</span></span>
+                            {% endif %}
+                            {% if chesscom.rapid %}
+                            <span class="games-tc"><b>{{ chesscom.rapid.wins|add:chesscom.rapid.losses|add:chesscom.rapid.draws }}</b><span class="tc-short">Ra</span><span class="tc-long">Rapid</span></span>
+                            {% endif %}
+                            {% if chesscom.daily %}
+                            <span class="games-tc" title="Chess.com Daily ≈ Classical"><b>{{ chesscom.daily.wins|add:chesscom.daily.losses|add:chesscom.daily.draws }}</b><span class="tc-short">Cl</span><span class="tc-long">Classical</span></span>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+                <a href="{% url 'analyzer:home_chesscom' %}" class="profile-card-link" title="Open Chess.com analysis">→</a>
+            {% else %}
+                <div class="profile-card-empty">
+                    <img src="{% static 'images/chesscom.png' %}" alt="" class="platform-mini-logo platform-mini-logo-empty platform-mini-logo-light">
+                    <img src="{% static 'images/chesscom_logo_wordmark_outline.svg' %}" alt="" class="platform-mini-logo platform-mini-logo-empty platform-mini-logo-dark">
+                    <div>
+                        <h3>No Chess.com linked</h3>
+                        <a href="{% url 'analyzer:profile' %}" class="profile-card-action">Add username</a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        {# ----- Right: Lichess ----- #}
+        <div class="profile-card-mini profile-card-lichess">
+            {% if lichess %}
+                <div class="profile-avatar profile-avatar-mini profile-avatar-lichess">
+                    <img src="{% static 'images/lichess.svg' %}" alt="" class="profile-avatar-piece">
+                </div>
+                <div class="profile-card-info">
+                    <div class="profile-card-platform">
+                        <img src="{% static 'images/lichess.svg' %}" alt="Lichess" class="platform-mini-logo platform-mini-logo-lichess">
+                    </div>
+                    <h3 class="profile-card-name">
+                        {% if lichess.title %}<span class="profile-title">{{ lichess.title }}</span>{% endif %}
+                        {{ lichess.display_name }}
+                    </h3>
+                    <div class="profile-card-meta">
+                        {% if lichess.flag_url %}<img src="{{ lichess.flag_url }}" alt="" class="country-flag">{% endif %}
+                        <span class="games-breakdown">
+                            {% if lichess.bullet %}
+                            <span class="games-tc"><b>{{ lichess.bullet.games_total }}</b><span class="tc-short">Bu</span><span class="tc-long">Bullet</span></span>
+                            {% endif %}
+                            {% if lichess.blitz %}
+                            <span class="games-tc"><b>{{ lichess.blitz.games_total }}</b><span class="tc-short">Bl</span><span class="tc-long">Blitz</span></span>
+                            {% endif %}
+                            {% if lichess.rapid %}
+                            <span class="games-tc"><b>{{ lichess.rapid.games_total }}</b><span class="tc-short">Ra</span><span class="tc-long">Rapid</span></span>
+                            {% endif %}
+                            {% if lichess.classical %}
+                            <span class="games-tc"><b>{{ lichess.classical.games_total }}</b><span class="tc-short">Cl</span><span class="tc-long">Classical</span></span>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+                <a href="{% url 'analyzer:home_lichess' %}" class="profile-card-link" title="Open Lichess analysis">→</a>
+            {% else %}
+                <div class="profile-card-empty">
+                    <img src="{% static 'images/lichess.svg' %}" alt="" class="platform-mini-logo platform-mini-logo-empty platform-mini-logo-lichess">
+                    <div>
+                        <h3>No Lichess linked</h3>
+                        <a href="{% url 'analyzer:profile' %}" class="profile-card-action">Add username</a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+    {# ============ Combined chart ============ #}
+    {% if chesscom or lichess %}
+    <div class="combined-chart-card">
+        <div class="combined-chart-head">
+            <h2 class="combined-chart-title">Rating evolution</h2>
+            <div class="combined-tc-selector" role="tablist" aria-label="Time control">
+                <button type="button" class="tc-btn" data-tc="bullet" role="tab">Bullet</button>
+                <button type="button" class="tc-btn active" data-tc="blitz" role="tab" aria-selected="true">Blitz</button>
+                <button type="button" class="tc-btn" data-tc="rapid" role="tab">Rapid</button>
+                <button type="button" class="tc-btn" data-tc="classical" role="tab">Classical</button>
+            </div>
+        </div>
+
+        <div class="platform-view-selector" role="tablist" aria-label="Platform view">
+            <button type="button" class="pv-btn" data-platform="chesscom" role="tab" aria-label="Chess.com">
+                <img src="{% static 'images/chesscom.png' %}" alt="Chess.com" class="pv-logo pv-logo-light">
+                <img src="{% static 'images/chesscom_logo_wordmark_outline.svg' %}" alt="Chess.com" class="pv-logo pv-logo-dark">
+            </button>
+            <button type="button" class="pv-btn active" data-platform="both" role="tab" aria-selected="true">
+                <span class="pv-both-label">Both</span>
+            </button>
+            <button type="button" class="pv-btn" data-platform="lichess" role="tab" aria-label="Lichess">
+                <img src="{% static 'images/lichess.svg' %}" alt="Lichess" class="pv-logo pv-logo-lichess">
+            </button>
+        </div>
+
+        <div class="combined-chart-toolbar">
+            <span class="modal-chart-hint">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                Scroll to zoom · Drag to pan
+            </span>
+            <button class="modal-chart-reset" type="button" id="combined-reset-zoom">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                Reset zoom
+            </button>
+        </div>
+
+        <div class="combined-chart-canvas">
+            <canvas id="combined-chart"></canvas>
+        </div>
+
+        <div class="combined-legend">
+            <span class="legend-item legend-chesscom"><span class="legend-dot"></span> Chess.com</span>
+            <span class="legend-item legend-lichess"><span class="legend-dot"></span> Lichess</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+</section>
+
+{# JSON payload — Django's json_script tag guarantees valid JSON #}
+{{ combined_payload|json_script:"combined-payload" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+
+<script>
+(function () {
+    const canvas = document.getElementById('combined-chart');
+    if (!canvas) return;
+
+    let payload = { chesscom: {}, lichess: {} };
+    try {
+        const node = document.getElementById('combined-payload');
+        if (node) {
+            const parsed = JSON.parse(node.textContent);
+            if (parsed && typeof parsed === 'object') {
+                payload = parsed;
+            }
+        }
+    } catch (e) { /* keep empty default */ }
+
+    const COLOR_CC = '#81b64c';   // chess.com green
+    const COLOR_LC = '#dbd7d2';   // lichess cream
+
+    const tcButtons = document.querySelectorAll('.tc-btn');
+    const pvButtons = document.querySelectorAll('.pv-btn');
+    const resetBtn = document.getElementById('combined-reset-zoom');
+    let chart = null;
+    let currentTc = 'blitz';
+    let currentView = 'both';     // 'chesscom' | 'both' | 'lichess'
+
+    function ptsToXY(pairs) {
+        // pairs come in as [[ts, rating], ...]
+        return (pairs || []).map(p => ({ x: p[0], y: p[1] }));
+    }
+
+    // ---- Custom plugins ----
+
+    // Glow: draws each line twice — once thick + faded for halo, once normal
+    const linesGlowPlugin = {
+        id: 'linesGlow',
+        beforeDatasetDraw(chartInst, args) {
+            const ds = args.meta.dataset;
+            if (!ds) return;
+            const c = chartInst.ctx;
+            c.save();
+            c.shadowColor = ds.options.borderColor + 'AA';
+            c.shadowBlur = 16;
+            c.shadowOffsetX = 0;
+            c.shadowOffsetY = 0;
+        },
+        afterDatasetDraw(chartInst) {
+            chartInst.ctx.restore();
+        },
+    };
+
+    // Vertical crosshair that follows the tooltip
+    const crosshairPlugin = {
+        id: 'crosshair',
+        afterDraw(chartInst) {
+            const active = chartInst.tooltip && chartInst.tooltip.getActiveElements
+                ? chartInst.tooltip.getActiveElements()
+                : (chartInst.tooltip._active || []);
+            if (!active || !active.length) return;
+            const x = active[0].element.x;
+            const { top, bottom } = chartInst.chartArea;
+            const c = chartInst.ctx;
+            c.save();
+            c.beginPath();
+            c.moveTo(x, top);
+            c.lineTo(x, bottom);
+            c.lineWidth = 1;
+            c.strokeStyle = 'rgba(232,234,237,0.25)';
+            c.setLineDash([4, 5]);
+            c.stroke();
+            c.restore();
+        },
+    };
+
+    function makeFillGradient(ctx, color, height) {
+        const g = ctx.createLinearGradient(0, 0, 0, height);
+        g.addColorStop(0,   color + '55');
+        g.addColorStop(0.6, color + '15');
+        g.addColorStop(1,   color + '00');
+        return g;
+    }
+
+    function buildChart() {
+        const ctx = canvas.getContext('2d');
+        if (chart) { chart.destroy(); chart = null; }
+
+        const showCC = (currentView === 'both' || currentView === 'chesscom');
+        const showLC = (currentView === 'both' || currentView === 'lichess');
+
+        const ccData = showCC ? ptsToXY((payload.chesscom || {})[currentTc]) : [];
+        const lcData = showLC ? ptsToXY((payload.lichess  || {})[currentTc]) : [];
+
+        const h = canvas.parentElement.clientHeight || 360;
+
+        const datasets = [];
+        if (ccData.length) {
+            datasets.push({
+                label: 'Chess.com',
+                data: ccData,
+                borderColor: COLOR_CC,
+                backgroundColor: makeFillGradient(ctx, COLOR_CC, h),
+                fill: true,
+                tension: 0.32,
+                borderWidth: 2.4,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: COLOR_CC,
+                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderWidth: 2.5,
+            });
+        }
+        if (lcData.length) {
+            datasets.push({
+                label: 'Lichess',
+                data: lcData,
+                borderColor: COLOR_LC,
+                backgroundColor: makeFillGradient(ctx, COLOR_LC, h),
+                fill: true,
+                tension: 0.32,
+                borderWidth: 2.4,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: COLOR_LC,
+                pointHoverBorderColor: '#0e1015',
+                pointHoverBorderWidth: 2.5,
+            });
+        }
+
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 1100, easing: 'easeInOutQuart' },
+                animations: {
+                    y: { from: (ctx) => ctx.chart.scales.y.getPixelForValue(0) },
+                },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
+                        grid:   { color: 'rgba(154,160,166,0.05)' },
+                        border: { display: false },
+                        ticks:  { color: '#9aa0a6', font: { size: 11, weight: '500' } },
+                    },
+                    y: {
+                        grid:   { color: 'rgba(154,160,166,0.08)' },
+                        border: { display: false },
+                        ticks:  { color: '#9aa0a6', font: { size: 11, weight: '500' }, padding: 10 },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(20,22,28,0.96)',
+                        borderColor: 'rgba(118,150,86,0.35)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 10,
+                        titleColor: '#9aa0a6',
+                        bodyColor:  '#e8eaed',
+                        titleFont: { size: 11, weight: '600' },
+                        bodyFont:  { size: 14, weight: '700' },
+                        boxPadding: 5,
+                        usePointStyle: true,
+                        callbacks: {
+                            label: (item) => '  ' + item.dataset.label + ': ' + item.formattedValue,
+                        },
+                    },
+                    zoom: {
+                        pan:  { enabled: true, mode: 'x' },
+                        zoom: {
+                            wheel: { enabled: true, speed: 0.08 },
+                            pinch: { enabled: true },
+                            mode: 'x',
+                        },
+                    },
+                },
+            },
+            plugins: [linesGlowPlugin, crosshairPlugin],
+        });
+    }
+
+    function setActive(group, btn) {
+        group.forEach(b => {
+            b.classList.toggle('active', b === btn);
+            b.setAttribute('aria-selected', b === btn);
+        });
+    }
+
+    tcButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentTc = btn.dataset.tc;
+            setActive(tcButtons, btn);
+            buildChart();
+        });
+    });
+
+    pvButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentView = btn.dataset.platform;
+            setActive(pvButtons, btn);
+            buildChart();
+        });
+    });
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => { if (chart) chart.resetZoom(); });
+    }
+
+    // Initial state from whichever buttons happen to be active in HTML
+    const activeTc = document.querySelector('.tc-btn.active');
+    const activePv = document.querySelector('.pv-btn.active');
+    if (activeTc) currentTc = activeTc.dataset.tc;
+    if (activePv) currentView = activePv.dataset.platform;
+    buildChart();
+})();
+</script>
 {% endblock %}

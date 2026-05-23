@@ -78,6 +78,21 @@
                     </svg>
                     {{ player.total_games }} Games
                 </span>
+                <span class="meta-divider">·</span>
+                <span class="games-breakdown">
+                    {% if player.bullet %}
+                    <span class="games-tc"><b>{{ player.bullet.games_total }}</b><span class="tc-short">Bu</span><span class="tc-long">Bullet</span></span>
+                    {% endif %}
+                    {% if player.blitz %}
+                    <span class="games-tc"><b>{{ player.blitz.games_total }}</b><span class="tc-short">Bl</span><span class="tc-long">Blitz</span></span>
+                    {% endif %}
+                    {% if player.rapid %}
+                    <span class="games-tc"><b>{{ player.rapid.games_total }}</b><span class="tc-short">Ra</span><span class="tc-long">Rapid</span></span>
+                    {% endif %}
+                    {% if player.classical %}
+                    <span class="games-tc"><b>{{ player.classical.games_total }}</b><span class="tc-short">Cl</span><span class="tc-long">Classical</span></span>
+                    {% endif %}
+                </span>
 
                 {% if player.last_online %}
                 <span class="meta-divider">·</span>

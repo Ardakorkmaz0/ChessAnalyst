@@ -132,8 +132,12 @@ TIME_CLASSES = ("bullet", "blitz", "rapid", "daily")
 
 
 def _ratings_from_archive(username, archive_url):
-    """Returns {time_class: [ratings]} from one monthly archive. Cached 1h."""
-    cache_key = f"chesscom:archive_ratings:{username.lower()}:{archive_url}"
+    """
+    Returns {time_class: [(end_time_ms, rating), ...]} from one monthly archive.
+    Each entry is a (timestamp_ms, rating) pair so the combined `Both` chart
+    can align two platforms on a real time axis.
+    """
+    cache_key = f"chesscom:archive_dated:{username.lower()}:{archive_url}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -152,8 +156,9 @@ def _ratings_from_archive(username, archive_url):
             rating = black.get("rating")
         else:
             rating = None
-        if rating:
-            result[tc].append(rating)
+        end_time = game.get("end_time")
+        if rating and end_time:
+            result[tc].append([end_time * 1000, rating])   # list (JSON-serializable)
 
     cache.set(cache_key, result, ARCHIVE_TTL)
     return result
@@ -161,22 +166,27 @@ def _ratings_from_archive(username, archive_url):
 
 def _extract_rating_history(username, months_back=HISTORY_MONTHS):
     """
-    Pull last `months_back` archives, return {time_class: [ratings...]}.
-    Sorted oldest → newest. Per-archive cached.
+    Returns two parallel views over the last `months_back` months:
+      - `ratings`: {time_class: [rating, rating, ...]}            (chronological)
+      - `dated`:   {time_class: [(ts_ms, rating), ...]}            (chronological)
     """
     archives = fetch_archives(username)
     if not archives:
-        return {tc: [] for tc in TIME_CLASSES}
+        empty = {tc: [] for tc in TIME_CLASSES}
+        return {"ratings": empty, "dated": dict(empty)}
 
     recent = archives[-months_back:]
-    history = {tc: [] for tc in TIME_CLASSES}
+    ratings = {tc: [] for tc in TIME_CLASSES}
+    dated   = {tc: [] for tc in TIME_CLASSES}
 
     for archive_url in recent:
         archive_data = _ratings_from_archive(username, archive_url)
         for tc in TIME_CLASSES:
-            history[tc].extend(archive_data[tc])
+            for ts, r in archive_data[tc]:
+                ratings[tc].append(r)
+                dated[tc].append([ts, r])
 
-    return history
+    return {"ratings": ratings, "dated": dated}
 
 
 def _sparkline_points(ratings, width=100, height=30):
@@ -233,22 +243,25 @@ def get_player_data(username):
         return None
 
     stats = fetch_stats(username) or {}
-    history = _extract_rating_history(username)
+    history_pair = _extract_rating_history(username)
+    history_ratings = history_pair["ratings"]
+    history_dated   = history_pair["dated"]
 
     def build(key, hist_key):
         block = _rating_block(stats, key)
         if not block:
             return None
-        ratings_all = history.get(hist_key, [])
-        # sparkline (small) — last N points only
+        ratings_all = history_ratings.get(hist_key, [])
+        dated_all   = history_dated.get(hist_key, [])
         ratings_small = ratings_all[-SPARKLINE_POINTS:]
         pct, direction = _calc_trend(ratings_small)
         block["sparkline_points"] = _sparkline_points(ratings_small)
         block["sparkline_area"]   = _sparkline_area_path(ratings_small)
         block["trend_pct"]        = pct
         block["trend_direction"]  = direction
-        block["games_count"]      = len(ratings_all)        # total games in history window
-        block["raw_ratings"]      = ratings_all              # full history → modal
+        block["games_count"]      = len(ratings_all)
+        block["raw_ratings"]      = ratings_all
+        block["dated_history"]    = dated_all          # [(ts_ms, rating), ...]
         block["min_rating"]       = min(ratings_all) if ratings_all else None
         block["max_rating"]       = max(ratings_all) if ratings_all else None
         return block
