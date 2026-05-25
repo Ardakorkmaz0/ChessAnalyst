@@ -21,6 +21,7 @@ ARCHIVE_TTL = 60 * 60 * 24    # 24h per archive (past months never change)
 HISTORY_MONTHS = None         # None = pull entire account history
 SPARKLINE_POINTS = 30         # small card sparkline — last N games
 PARALLEL_WORKERS = 12         # concurrent HTTP fetches
+GAME_CACHE_VERSION = 2        # bump when tilt game cache behavior changes
 
 # Reused session = TCP/TLS handshake once, not per request
 _session = requests.Session()
@@ -135,6 +136,93 @@ def _format_joined(ts):
 # -----------------------------------------------------------------------
 
 TIME_CLASSES = ("bullet", "blitz", "rapid", "daily")
+
+
+def _games_from_archive(username, archive_url):
+    """
+    Returns list of game-level dicts for tilt analysis:
+        {ts, result, time_class, my_rating, opp_rating}
+    where result is 'win' | 'loss' | 'draw'. Cached 24h per archive.
+    """
+    cache_key = f"chesscom:games:v{GAME_CACHE_VERSION}:{username.lower()}:{archive_url}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    out = []
+    username_lc = username.lower()
+    draw_results = {"agreed", "stalemate", "repetition",
+                    "insufficient", "50move", "timevsinsufficient"}
+
+    month_games = fetch_month_games(archive_url)
+    if not month_games:
+        return []
+
+    for game in month_games:
+        white = game.get("white") or {}
+        black = game.get("black") or {}
+        i_am_white = (white.get("username") or "").lower() == username_lc
+        if not i_am_white and (black.get("username") or "").lower() != username_lc:
+            continue
+
+        my_side = white if i_am_white else black
+        opp_side = black if i_am_white else white
+        my_result = my_side.get("result", "")
+
+        if my_result == "win":
+            outcome = "win"
+        elif my_result in draw_results:
+            outcome = "draw"
+        else:
+            outcome = "loss"
+
+        end_time = game.get("end_time") or 0
+        out.append({
+            "ts": end_time * 1000,
+            "result": outcome,
+            "time_class": game.get("time_class"),
+            "my_rating": my_side.get("rating"),
+            "opp_rating": opp_side.get("rating"),
+        })
+
+    if out:
+        cache.set(cache_key, out, ARCHIVE_TTL)
+    return out
+
+
+def get_all_games(username, months_back=12):
+    """
+    Aggregate game list across the last `months_back` archives, sorted by ts.
+    Defaults to 12 months — enough for tilt analysis without hammering the API.
+    """
+    if not username:
+        return []
+
+    cache_key = f"chesscom:all_games:v{GAME_CACHE_VERSION}:{username.lower()}:{months_back}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    archives = fetch_archives(username)
+    if not archives:
+        return []
+
+    recent = archives[-months_back:] if months_back else archives
+
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+        chunks = list(executor.map(
+            lambda url: _games_from_archive(username, url),
+            recent,
+        ))
+
+    all_games = []
+    for chunk in chunks:
+        all_games.extend(chunk)
+    all_games.sort(key=lambda g: g["ts"])
+
+    if all_games:
+        cache.set(cache_key, all_games, CACHE_TTL)
+    return all_games
 
 
 def _ratings_from_archive(username, archive_url):

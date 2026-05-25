@@ -6,7 +6,8 @@ No auth required. Rate limit generous. Single endpoint /rating-history
 returns full timeline per perf type — no archive walking needed.
 """
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import json
 
 import requests
 from django.core.cache import cache
@@ -20,6 +21,7 @@ TIMEOUT = 10
 CACHE_TTL = 300         # 5 min
 SPARKLINE_POINTS = 30
 PARALLEL_WORKERS = 6
+GAME_CACHE_VERSION = 1
 
 # Reused HTTP session for connection pooling
 _session = requests.Session()
@@ -263,3 +265,128 @@ def get_player_data(username):
 
     cache.set(cache_key, data, CACHE_TTL)
     return data
+
+def fetch_recent_games_lichess(username, max_games=500):
+    """Returns list of game dicts via NDJSON streaming."""
+    url = f"{BASE_URL}/games/user/{username}"
+    params = {"max": max_games}
+    try:
+        resp = _session.get(url, params=params, headers={"Accept": "application/x-ndjson"}, timeout=30, stream=True)
+        if not resp.ok:
+            return []
+        games = []
+        for line in resp.iter_lines():
+            if line:
+                try:
+                    games.append(json.loads(line))
+                except ValueError:
+                    continue
+        return games
+    except requests.RequestException:
+        return []
+
+
+def _normalize_perf(perf):
+    value = (perf or "").replace("_", "").replace("-", "").lower()
+    if value in {"bullet", "ultrabullet"}:
+        return "bullet"
+    if value == "blitz":
+        return "blitz"
+    if value == "rapid":
+        return "rapid"
+    if value == "classical":
+        return "classical"
+    return value or None
+
+
+def _player_side(game, username):
+    target = (username or "").lower()
+    players = game.get("players") or {}
+    for side in ("white", "black"):
+        user = (players.get(side) or {}).get("user") or {}
+        names = (user.get("name"), user.get("id"))
+        if any((name or "").lower() == target for name in names):
+            return side
+    return None
+
+
+def _normalize_game(game, username):
+    side = _player_side(game, username)
+    if not side:
+        return None
+
+    winner = game.get("winner")
+    if not winner:
+        result = "draw"
+    elif winner == side:
+        result = "win"
+    else:
+        result = "loss"
+
+    players = game.get("players") or {}
+    mine = players.get(side) or {}
+    opponent = players.get("black" if side == "white" else "white") or {}
+    ts = game.get("createdAt") or game.get("lastMoveAt")
+    if not ts:
+        return None
+
+    return {
+        "ts": ts,
+        "result": result,
+        "time_class": _normalize_perf(game.get("perf") or game.get("speed")),
+        "my_rating": mine.get("rating"),
+        "opp_rating": opponent.get("rating"),
+    }
+
+
+def get_all_games(username, months_back=12, max_games=2000):
+    """Returns normalized games shaped like the Chess.com tilt input."""
+    if not username:
+        return []
+
+    cache_key = f"lichess:games:v{GAME_CACHE_VERSION}:{username.lower()}:{months_back}:{max_games}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    since = datetime.now(timezone.utc) - timedelta(days=31 * months_back)
+    url = f"{BASE_URL}/games/user/{username}"
+    params = {
+        "max": max_games,
+        "since": int(since.timestamp() * 1000),
+        "sort": "dateAsc",
+        "moves": "false",
+        "clocks": "false",
+        "evals": "false",
+        "opening": "false",
+    }
+
+    try:
+        resp = _session.get(
+            url,
+            params=params,
+            headers={"Accept": "application/x-ndjson"},
+            timeout=30,
+            stream=True,
+        )
+        if not resp.ok:
+            return []
+
+        games = []
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except ValueError:
+                continue
+            game = _normalize_game(raw, username)
+            if game:
+                games.append(game)
+    except requests.RequestException:
+        return []
+
+    games.sort(key=lambda game: game.get("ts") or 0)
+    if games:
+        cache.set(cache_key, games, CACHE_TTL)
+    return games
