@@ -1,0 +1,607 @@
+{% comment %}
+============================================================
+Reusable tilt analysis panel.
+Used by chesscom.html and lichess.html — single source of truth.
+
+Required context vars (provided by views._build_tilt_context_from_games):
+  - tilt_state          : 'ok' | 'unavailable' | 'empty'
+  - tilt_total_games    : int
+  - tilt_period_label   : str  (e.g. "last 12 months")
+  - tilt_status_text    : str
+  - tilt_status_class   : str  (is-warning | is-ok | is-neutral)
+  - tilt_baseline_pct   : str / "-"
+  - tilt_post_loss_pct  : str / "-"
+  - tilt_delta_display  : str (e.g. "+5%")
+  - tilt_delta_class    : str
+  - tilt_max_loss_streak: int
+  - tilt_time_class_counts : dict
+  - tilt_period_defs    : list of (key, short_label, label, days)
+  - tilt_tz_label       : str (e.g. "UTC+3")
+  - tilt_insights       : list of {icon, text}
+  - tilt_payload        : dict (passed to JS as JSON)
+  - tilt_game_count     : int (for empty state)
+============================================================
+{% endcomment %}
+
+{# Toggle button — collapse/expand the analysis panel #}
+<button type="button"
+        class="tilt-cta"
+        data-tilt-toggle
+        aria-expanded="false"
+        aria-controls="tilt-inline-panel">
+    <div class="tilt-cta-text">
+        <h3>Run Tilt Analysis →</h3>
+        <p>See how your win rate changes after a loss, by hour of day, and through long sessions.</p>
+    </div>
+    <span class="tilt-cta-arrow" aria-hidden="true">→</span>
+</button>
+
+<section class="tilt-inline-panel" id="tilt-inline-panel" hidden>
+    {% if tilt_state == 'ok' %}
+        <div class="tilt-inline-head">
+            <div>
+                <h2>Tilt summary</h2>
+                <p data-tilt-summary-copy>{{ tilt_total_games }} games analyzed in {{ tilt_period_label }}.</p>
+            </div>
+            <span class="tilt-inline-status {{ tilt_status_class }}" data-tilt-status>
+                {{ tilt_status_text }}
+            </span>
+        </div>
+
+        <div class="tilt-filter-bar">
+            <div class="tilt-filter-group">
+                <span>Game type</span>
+                <div class="combined-tc-selector tilt-filter-tabs" role="tablist" aria-label="Tilt game type">
+                    <button type="button" class="tc-btn active" data-tilt-tc="total" role="tab" aria-selected="true">
+                        <span class="tc-tab-long">Total</span><span class="tc-tab-short">All</span>
+                    </button>
+                    <button type="button" class="tc-btn" data-tilt-tc="bullet" role="tab" {% if not tilt_time_class_counts.bullet %}disabled{% endif %}>
+                        <span class="tc-tab-long">Bullet</span><span class="tc-tab-short">Bu</span>
+                    </button>
+                    <button type="button" class="tc-btn" data-tilt-tc="blitz" role="tab" {% if not tilt_time_class_counts.blitz %}disabled{% endif %}>
+                        <span class="tc-tab-long">Blitz</span><span class="tc-tab-short">Bl</span>
+                    </button>
+                    <button type="button" class="tc-btn" data-tilt-tc="rapid" role="tab" {% if not tilt_time_class_counts.rapid %}disabled{% endif %}>
+                        <span class="tc-tab-long">Rapid</span><span class="tc-tab-short">Ra</span>
+                    </button>
+                    <button type="button" class="tc-btn" data-tilt-tc="classical" role="tab" {% if not tilt_time_class_counts.classical %}disabled{% endif %}>
+                        <span class="tc-tab-long">Classical</span><span class="tc-tab-short">Cl</span>
+                    </button>
+                    <button type="button" class="tc-btn" data-tilt-tc="daily" role="tab" {% if not tilt_time_class_counts.daily %}disabled{% endif %}>
+                        <span class="tc-tab-long">Daily</span><span class="tc-tab-short">Da</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tilt-filter-group">
+                <span>Time range</span>
+                <div class="combined-tc-selector tilt-filter-tabs" role="tablist" aria-label="Tilt time range">
+                    {% for key, short_label, label, days in tilt_period_defs %}
+                        <button type="button" class="tc-btn {% if key == '12m' %}active{% endif %}" data-tilt-period="{{ key }}" role="tab" aria-selected="{% if key == '12m' %}true{% else %}false{% endif %}">
+                            {{ short_label }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="tilt-mini-stats">
+            <div class="tilt-mini-stat">
+                <span>Baseline</span>
+                <strong data-tilt-baseline>{{ tilt_baseline_pct }}{% if tilt_baseline_pct != '-' %}%{% endif %}</strong>
+            </div>
+            <div class="tilt-mini-stat">
+                <span>After loss</span>
+                <strong data-tilt-post-loss>{{ tilt_post_loss_pct }}{% if tilt_post_loss_pct != '-' %}%{% endif %}</strong>
+            </div>
+            <div class="tilt-mini-stat">
+                <span>After-loss change</span>
+                <strong class="{{ tilt_delta_class }}" data-tilt-delta>{{ tilt_delta_display }}</strong>
+            </div>
+            <div class="tilt-mini-stat">
+                <span>🔥 Longest streak</span>
+                <strong data-tilt-streak>{{ tilt_max_loss_streak }}</strong>
+            </div>
+        </div>
+
+        <div class="tilt-inline-grid">
+            <article class="tilt-inline-chart tilt-inline-chart-wide">
+                <div class="tilt-inline-chart-head">
+                    <h3>Hourly win rate</h3>
+                    <span>{{ tilt_tz_label|default:"UTC+3" }}</span>
+                </div>
+                <div class="tilt-inline-canvas">
+                    <canvas id="tilt-hourly-chart"></canvas>
+                    <div class="tilt-inline-empty" id="tilt-hourly-empty" hidden>No hourly data yet.</div>
+                </div>
+            </article>
+
+            <article class="tilt-inline-chart">
+                <div class="tilt-inline-chart-head">
+                    <h3>Session position</h3>
+                    <span>60m gap</span>
+                </div>
+                <div class="tilt-inline-canvas">
+                    <canvas id="tilt-session-chart"></canvas>
+                    <div class="tilt-inline-empty" id="tilt-session-empty" hidden>More session data needed.</div>
+                </div>
+            </article>
+
+            <article class="tilt-inline-chart">
+                <div class="tilt-inline-chart-head">
+                    <h3>Losing streaks</h3>
+                    <span>Runs</span>
+                </div>
+                <div class="tilt-inline-canvas">
+                    <canvas id="tilt-streak-chart"></canvas>
+                    <div class="tilt-inline-empty" id="tilt-streak-empty" hidden>No streak data yet.</div>
+                </div>
+            </article>
+        </div>
+
+        {% if tilt_insights %}
+        <ul class="tilt-inline-insights" data-tilt-insights>
+            {% for insight in tilt_insights %}
+                <li class="insight-{{ insight.icon }}">{{ insight.text }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <ul class="tilt-inline-insights" data-tilt-insights hidden></ul>
+        {% endif %}
+
+    {% elif tilt_state == 'unavailable' %}
+        <div class="tilt-inline-empty-state">
+            <h3>Tilt analysis unavailable</h3>
+            <p>Your profile stats loaded, but the platform did not return the recent game archive for tilt analysis. Refresh in a moment.</p>
+        </div>
+    {% else %}
+        <div class="tilt-inline-empty-state">
+            <h3>Not enough games to analyze</h3>
+            <p>We need at least 10 games in the last 12 months. Found {{ tilt_game_count|default:0 }}.</p>
+        </div>
+    {% endif %}
+</section>
+
+{% if tilt_state == 'ok' %}
+    {{ tilt_payload|json_script:"tilt-payload" }}
+{% endif %}
+
+<script>
+(function () {
+    const toggle = document.querySelector('[data-tilt-toggle]');
+    const panel = document.getElementById('tilt-inline-panel');
+    if (!toggle || !panel) return;
+
+    let rendered = false;
+    const tiltChartInstances = [];
+
+    function cssVar(name, fallback) {
+        const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return value || fallback;
+    }
+
+    function rgba(hex, opacity) {
+        if (!hex || !hex.startsWith('#')) return hex;
+        let value = hex.slice(1);
+        if (value.length === 3) {
+            value = value.split('').map((char) => char + char).join('');
+        }
+        const raw = parseInt(value.slice(0, 6), 16);
+        if (Number.isNaN(raw)) return hex;
+        return `rgba(${(raw >> 16) & 255}, ${(raw >> 8) & 255}, ${raw & 255}, ${opacity})`;
+    }
+
+    function readColors() {
+        return {
+            text: cssVar('--text', '#17202c'),
+            muted: cssVar('--text-muted', '#5e6977'),
+            surface: cssVar('--bg-elev', '#ffffff'),
+            border: cssVar('--border', '#d2dbe5'),
+            green: cssVar('--chesscom', '#81b64c'),
+            red: cssVar('--chart-bad', '#e57878'),
+            neutral: cssVar('--chart-neutral', '#8b95a3'),
+            grid: cssVar('--chart-grid', 'rgba(94, 105, 119, 0.16)'),
+        };
+    }
+
+    function setEmpty(canvasId, isEmpty, message) {
+        const canvas = document.getElementById(canvasId);
+        const empty = document.getElementById(canvasId.replace('-chart', '-empty'));
+        if (canvas) canvas.hidden = isEmpty;
+        if (empty) {
+            if (message) empty.textContent = message;
+            empty.hidden = !isEmpty;
+        }
+    }
+
+    function showChartError(message) {
+        ['tilt-hourly-chart', 'tilt-session-chart', 'tilt-streak-chart'].forEach((id) => {
+            setEmpty(id, true, message);
+        });
+    }
+
+    function destroyTiltCharts() {
+        while (tiltChartInstances.length) {
+            tiltChartInstances.pop().destroy();
+        }
+    }
+
+    function baselinePlugin(baseline, colors) {
+        return {
+            id: 'tiltBaselineLine',
+            afterDatasetsDraw(chart) {
+                if (baseline === null || baseline === undefined || !chart.scales.y) return;
+                const y = chart.scales.y.getPixelForValue(baseline);
+                const area = chart.chartArea;
+                if (!area || !Number.isFinite(y)) return;
+
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(area.left, y);
+                ctx.lineTo(area.right, y);
+                ctx.strokeStyle = rgba(colors.text, 0.28);
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.restore();
+            },
+        };
+    }
+
+    function colorFor(value, baseline, colors) {
+        if (value === null || value === undefined) return rgba(colors.neutral, 0.18);
+        if (baseline === null || baseline === undefined) return colors.green;
+        if (value >= baseline + 3) return colors.green;
+        if (value <= baseline - 3) return colors.red;
+        return rgba(colors.neutral, 0.55);
+    }
+
+    function tooltip(colors, callbacks) {
+        return {
+            displayColors: false,
+            backgroundColor: colors.surface,
+            titleColor: colors.text,
+            bodyColor: colors.muted,
+            borderColor: colors.border,
+            borderWidth: 1,
+            cornerRadius: 8,
+            padding: 10,
+            callbacks,
+        };
+    }
+
+    function makeChart(canvasId, config, plugins) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const chart = new Chart(canvas.getContext('2d'), { ...config, plugins });
+        tiltChartInstances.push(chart);
+    }
+
+    function setActive(buttons, activeButton) {
+        buttons.forEach((button) => {
+            const active = button === activeButton;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+    }
+
+    function activeValue(selector, dataKey, fallback) {
+        let active = panel.querySelector(`${selector}.active:not(:disabled)`);
+        if (!active) {
+            active = panel.querySelector(`${selector}:not(:disabled)`);
+            setActive(panel.querySelectorAll(selector), active);
+        }
+        return active ? active.dataset[dataKey] : fallback;
+    }
+
+    function periodMeta(payload, periodKey) {
+        const periods = Array.isArray(payload.periods) ? payload.periods : [];
+        return periods.find((period) => period.key === periodKey) || { label: 'last 12 months' };
+    }
+
+    function tcLabel(tcKey) {
+        return {
+            total: 'Total',
+            bullet: 'Bullet',
+            blitz: 'Blitz',
+            rapid: 'Rapid',
+            classical: 'Classical',
+            daily: 'Daily',
+        }[tcKey] || 'Total';
+    }
+
+    function sliceFor(payload, periodKey, tcKey) {
+        const stats = payload.stats || {};
+        const periodStats = stats[periodKey] || stats[payload.default_period] || {};
+        return periodStats[tcKey] || periodStats.total || {};
+    }
+
+    function formatPct(value) {
+        return value === '-' || value === null || value === undefined ? '-' : `${value}%`;
+    }
+
+    function updateTypeAvailability(payload) {
+        const periodKey = activeValue('[data-tilt-period]', 'tiltPeriod', payload.default_period || '12m');
+        const periodStats = (payload.stats || {})[periodKey] || {};
+        const buttons = panel.querySelectorAll('[data-tilt-tc]');
+
+        buttons.forEach((button) => {
+            const key = button.dataset.tiltTc;
+            const totalGames = ((periodStats[key] || {}).total_games) || 0;
+            button.disabled = key !== 'total' && totalGames === 0;
+        });
+
+        const active = panel.querySelector('[data-tilt-tc].active');
+        if (active && active.disabled) {
+            const totalButton = panel.querySelector('[data-tilt-tc="total"]');
+            if (totalButton) setActive(buttons, totalButton);
+        }
+    }
+
+    function updateSummary(slice, payload, periodKey, tcKey) {
+        const summary = panel.querySelector('[data-tilt-summary-copy]');
+        if (summary) {
+            const label = tcKey === 'total' ? 'games' : `${tcLabel(tcKey)} games`;
+            summary.textContent = `${slice.total_games || 0} ${label} analyzed in ${periodMeta(payload, periodKey).label}.`;
+        }
+
+        const status = panel.querySelector('[data-tilt-status]');
+        if (status) {
+            status.className = `tilt-inline-status ${slice.status_class || 'is-neutral'}`;
+            status.textContent = slice.status_text || 'Need data';
+        }
+
+        const baseline = panel.querySelector('[data-tilt-baseline]');
+        if (baseline) baseline.textContent = formatPct(slice.baseline_pct);
+
+        const postLoss = panel.querySelector('[data-tilt-post-loss]');
+        if (postLoss) postLoss.textContent = formatPct(slice.post_loss_pct);
+
+        const delta = panel.querySelector('[data-tilt-delta]');
+        if (delta) {
+            delta.classList.remove('is-positive', 'is-negative', 'is-neutral');
+            delta.classList.add(slice.delta_class || 'is-neutral');
+            delta.textContent = slice.delta_display || '-';
+        }
+
+        const streak = panel.querySelector('[data-tilt-streak]');
+        if (streak) streak.textContent = slice.max_loss_streak || 0;
+
+        const insights = panel.querySelector('[data-tilt-insights]');
+        if (insights) {
+            const items = Array.isArray(slice.insights) ? slice.insights : [];
+            insights.hidden = items.length === 0;
+            insights.innerHTML = '';
+            items.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = `insight-${item.icon || 'info'}`;
+                li.textContent = item.text || '';
+                insights.appendChild(li);
+            });
+        }
+    }
+
+    function renderTiltCharts() {
+        const payloadNode = document.getElementById('tilt-payload');
+        if (!payloadNode) return;
+        if (typeof Chart === 'undefined') {
+            showChartError('Charts could not load. Refresh the page and try again.');
+            return;
+        }
+
+        let payload = {};
+        try {
+            payload = JSON.parse(payloadNode.textContent || '{}') || {};
+        } catch (error) {
+            showChartError('Tilt data could not be read.');
+            return;
+        }
+
+        destroyTiltCharts();
+        const colors = readColors();
+        updateTypeAvailability(payload);
+        const periodKey = activeValue('[data-tilt-period]', 'tiltPeriod', payload.default_period || '12m');
+        const tcKey = activeValue('[data-tilt-tc]', 'tiltTc', payload.default_tc || 'total');
+        const slice = sliceFor(payload, periodKey, tcKey);
+        const baseline = Number.isFinite(Number(slice.baseline_value)) ? Number(slice.baseline_value) : null;
+        const baselinePlugins = baseline === null ? [] : [baselinePlugin(baseline, colors)];
+
+        Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        Chart.defaults.color = colors.muted;
+
+        updateSummary(slice, payload, periodKey, tcKey);
+
+        const hourly = Array.isArray(slice.hourly) ? slice.hourly : [];
+        const hourlyGames = hourly.map((row) => row.games || 0);
+        const hasHourly = hourlyGames.some((count) => count > 0);
+        setEmpty('tilt-hourly-chart', !hasHourly);
+        if (hasHourly) {
+            const labels = hourly.map((row) => String(row.hour).padStart(2, '0'));
+            const data = hourly.map((row) => row.winrate === null ? null : +(row.winrate * 100).toFixed(1));
+            makeChart('tilt-hourly-chart', {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        data,
+                        backgroundColor: data.map((value) => colorFor(value, baseline, colors)),
+                        borderRadius: 6,
+                        borderSkipped: false,
+                        categoryPercentage: 0.72,
+                        barPercentage: 0.82,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: tooltip(colors, {
+                            title: (items) => `${items[0].label}:00`,
+                            label: (ctx) => {
+                                const games = hourlyGames[ctx.dataIndex] || 0;
+                                if (!games || ctx.raw === null) return 'No games';
+                                return `${ctx.parsed.y}% win rate - ${games} games`;
+                            },
+                        }),
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: colors.muted,
+                                autoSkip: false,
+                                maxRotation: 0,
+                                font: { size: 9, weight: '600' },
+                                callback: function (value, index) {
+                                    return labels[index];
+                                },
+                            },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: 100,
+                            border: { display: false },
+                            grid: { color: colors.grid, drawTicks: false },
+                            ticks: { color: colors.muted, callback: (value) => `${value}%` },
+                        },
+                    },
+                },
+            }, baselinePlugins);
+        }
+
+        const session = Array.isArray(slice.session_pos) ? slice.session_pos : [];
+        setEmpty('tilt-session-chart', session.length === 0);
+        if (session.length) {
+            const labels = session.map((row) => `#${row.position}`);
+            const data = session.map((row) => +(row.winrate * 100).toFixed(1));
+            const games = session.map((row) => row.games);
+            makeChart('tilt-session-chart', {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        data,
+                        borderColor: colors.green,
+                        backgroundColor: rgba(colors.green, 0.12),
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointRadius: 3.5,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: data.map((value) => colorFor(value, baseline, colors)),
+                        pointBorderColor: colors.surface,
+                        pointBorderWidth: 2,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: tooltip(colors, {
+                            title: (items) => `Game ${items[0].label} in session`,
+                            label: (ctx) => `${ctx.parsed.y}% win rate - ${games[ctx.dataIndex]} games`,
+                        }),
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: colors.muted } },
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: 100,
+                            border: { display: false },
+                            grid: { color: colors.grid, drawTicks: false },
+                            ticks: { color: colors.muted, callback: (value) => `${value}%` },
+                        },
+                    },
+                },
+            }, baselinePlugins);
+        }
+
+        const streakEntries = Object.entries(slice.streak_histogram || {})
+            .map(([length, count]) => [Number(length), count])
+            .filter(([length, count]) => Number.isFinite(length) && count > 0)
+            .sort((a, b) => a[0] - b[0]);
+
+        setEmpty('tilt-streak-chart', streakEntries.length === 0);
+        if (streakEntries.length) {
+            makeChart('tilt-streak-chart', {
+                type: 'bar',
+                data: {
+                    labels: streakEntries.map(([length]) => `${length} ❗`),
+                    datasets: [{
+                        data: streakEntries.map(([, count]) => count),
+                        backgroundColor: streakEntries.map(([length]) => length >= 4 ? colors.red : rgba(colors.neutral, 0.62)),
+                        borderRadius: 6,
+                        borderSkipped: false,
+                        barThickness: 16,
+                    }],
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: tooltip(colors, {
+                            title: (items) => `${items[0].label} losing streak`,
+                            label: (ctx) => `Happened ${ctx.parsed.x} time${ctx.parsed.x === 1 ? '' : 's'}`,
+                        }),
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            border: { display: false },
+                            grid: { color: colors.grid, drawTicks: false },
+                            ticks: { precision: 0, color: colors.muted },
+                        },
+                        y: { grid: { display: false }, ticks: { color: colors.muted } },
+                    },
+                },
+            }, []);
+        }
+
+        rendered = true;
+    }
+
+    function setOpen(open) {
+        panel.hidden = !open;
+        toggle.classList.toggle('is-open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const arrow = toggle.querySelector('.tilt-cta-arrow');
+        if (arrow) arrow.textContent = open ? '×' : '→';
+        if (open && !rendered) {
+            window.requestAnimationFrame(renderTiltCharts);
+        }
+    }
+
+    toggle.addEventListener('click', function () {
+        setOpen(panel.hidden);
+    });
+
+    panel.addEventListener('click', function (event) {
+        const tabButton = event.target.closest('[data-tilt-tc], [data-tilt-period]');
+        if (!tabButton || tabButton.disabled) return;
+
+        if (tabButton.matches('[data-tilt-tc]')) {
+            setActive(panel.querySelectorAll('[data-tilt-tc]'), tabButton);
+        } else {
+            setActive(panel.querySelectorAll('[data-tilt-period]'), tabButton);
+        }
+
+        if (rendered) renderTiltCharts();
+    });
+
+    const themeToggle = document.querySelector('[data-theme-toggle]');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', function () {
+            if (!panel.hidden && rendered) {
+                window.setTimeout(renderTiltCharts, 0);
+            }
+        });
+    }
+})();
+</script>

@@ -120,6 +120,9 @@
         {% include "analyzer/_rating_card.html" with key="classical" label="Classical" data=player.classical %}
     </div>
 
+    {# ============ Inline tilt analysis (shared partial) ============ #}
+    {% include "analyzer/_tilt_panel.html" %}
+
     {% endif %}
 
 </section>
@@ -376,4 +379,5 @@
     });
 })();
 </script>
+
 {% endblock %}

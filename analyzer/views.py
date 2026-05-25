@@ -2,16 +2,224 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import redirect, render
+from django.utils import timezone
 
-from . import chesscom_api, lichess_api
+from . import chesscom_api, lichess_api, tilt as tilt_module
 from .forms import UserProfileForm
 from .models import UserProfile
 
 
+# ---------------------------------------------------------------------------
+# Tilt-panel context builders
+#
+# Public entry points:
+#   _build_chesscom_tilt_context(username, player_data=None, tz_offset=3)
+#   _build_lichess_tilt_context(username, player_data=None, tz_offset=3)
+#
+# Internal pipeline:
+#   _compute_slices(games, ..., tz_offset)
+#       -> dict {period_key: {tc_key: slice_stats}}
+#   _active_context(slices, default_period, default_tc, period_defs)
+#       -> flat context vars for the template (tilt_baseline_pct, ...)
+#   _slice_stats(rows, tz_offset)
+#       -> stats for one specific (period × time class) slice
+# ---------------------------------------------------------------------------
+
+TIME_CLASSES = ("bullet", "blitz", "rapid", "classical", "daily")
+PERIOD_DEFS = (
+    ("30d", "30D", "last 30 days", 30),
+    ("90d", "90D", "last 90 days", 90),
+    ("6m",  "6M",  "last 6 months", 183),
+    ("12m", "12M", "last 12 months", None),
+)
+DEFAULT_PERIOD = "12m"
+DEFAULT_TC = "total"
+
+
+def _baseline_winrate_pct(rows):
+    if not rows:
+        return None
+    wins = sum(1 for r in rows if r["result"] == "win")
+    return round((wins / len(rows)) * 100, 1)
+
+
+def _delta_display(post_loss):
+    """Returns (display_string, css_class) for the post-loss delta."""
+    if not post_loss or post_loss.get("post_loss_winrate") is None:
+        return "-", "is-neutral"
+
+    delta_pp = round(
+        (post_loss["post_loss_winrate"] - post_loss["baseline_winrate"]) * 100
+    )
+    if delta_pp > 2:
+        return f"+{delta_pp}%", "is-positive"
+    if delta_pp < -2:
+        return f"{delta_pp}%", "is-negative"
+    return f"{delta_pp}%", "is-neutral"
+
+
+def _status_for(rows, post_loss):
+    """Returns (status_text, status_class)."""
+    if len(rows) < 10:
+        return "Need data", "is-neutral"
+    if post_loss and post_loss.get("is_tilting"):
+        return "Tilt detected", "is-warning"
+    return "Stable", "is-ok"
+
+
+def _round_winrates(rows, key="winrate"):
+    """Round winrate field to 3 decimals in-place — shrinks JSON payload."""
+    for row in rows:
+        v = row.get(key)
+        if v is not None:
+            row[key] = round(v, 3)
+    return rows
+
+
+def _slice_stats(rows, tz_offset):
+    """All stats for one (period × time-class) slice."""
+    baseline_pct = _baseline_winrate_pct(rows)
+    post_loss = tilt_module.compute_post_loss_stats(rows)
+    streaks = tilt_module.compute_streak_stats(rows) if rows else {
+        "max_loss_streak": 0,
+        "histogram": {},
+    }
+    hourly = tilt_module.compute_hourly_winrate(rows, tz_offset_hours=tz_offset)
+    session_pos = tilt_module.compute_session_position_stats(rows)
+    insights = tilt_module.humanize_insights(post_loss, hourly, streaks, session_pos)
+    delta_text, delta_class = _delta_display(post_loss)
+    status_text, status_class = _status_for(rows, post_loss)
+
+    return {
+        "total_games": len(rows),
+        "baseline_pct": f"{baseline_pct:.0f}" if baseline_pct is not None else "-",
+        "baseline_value": baseline_pct,
+        "post_loss_pct": post_loss.get("post_loss_pct") if post_loss else "-",
+        "delta_display": delta_text,
+        "delta_class": delta_class,
+        "max_loss_streak": streaks.get("max_loss_streak", 0),
+        "status_text": status_text,
+        "status_class": status_class,
+        "hourly": _round_winrates(hourly),               # round → smaller JSON
+        "session_pos": _round_winrates(session_pos[:30]),  # cap at 30 + round
+        "streak_histogram": streaks.get("histogram", {}),
+        "insights": insights[:3],
+    }
+
+
+def _compute_slices(games, tz_offset, latest_ts_ms):
+    """Returns {period_key: {tc_key: slice_stats}} for all combinations."""
+    day_ms = 24 * 60 * 60 * 1000
+    slices = {}
+
+    for period_key, _, _, days in PERIOD_DEFS:
+        if days is None:
+            period_games = games
+        else:
+            cutoff = latest_ts_ms - (days * day_ms)
+            period_games = [g for g in games if (g.get("ts") or 0) >= cutoff]
+
+        slices[period_key] = {"total": _slice_stats(period_games, tz_offset)}
+        for tc in TIME_CLASSES:
+            tc_games = [g for g in period_games if g.get("time_class") == tc]
+            slices[period_key][tc] = _slice_stats(tc_games, tz_offset)
+
+    return slices
+
+
+def _tz_label(tz_offset):
+    sign = "+" if tz_offset >= 0 else "-"
+    return f"UTC{sign}{abs(tz_offset)}"
+
+
+def _active_context(slices, tz_offset):
+    """Pull the default slice and flatten its stats into template context vars."""
+    active = slices[DEFAULT_PERIOD][DEFAULT_TC]
+    time_class_counts = {
+        "total": active["total_games"],
+        **{tc: slices[DEFAULT_PERIOD][tc]["total_games"] for tc in TIME_CLASSES},
+    }
+
+    return {
+        "tilt_state":            "ok",
+        "tilt_total_games":      active["total_games"],
+        "tilt_period_label":     "last 12 months",
+        "tilt_status_text":      active["status_text"],
+        "tilt_status_class":     active["status_class"],
+        "tilt_insights":         active["insights"],
+        "tilt_baseline_pct":     active["baseline_pct"],
+        "tilt_post_loss_pct":    active["post_loss_pct"],
+        "tilt_delta_display":    active["delta_display"],
+        "tilt_delta_class":      active["delta_class"],
+        "tilt_max_loss_streak":  active["max_loss_streak"],
+        "tilt_time_class_counts": time_class_counts,
+        "tilt_period_defs":      PERIOD_DEFS,
+        "tilt_tz_label":         _tz_label(tz_offset),
+        "tilt_payload": {
+            "default_period": DEFAULT_PERIOD,
+            "default_tc":     DEFAULT_TC,
+            "periods": [
+                {"key": k, "short_label": short, "label": label}
+                for k, short, label, _ in PERIOD_DEFS
+            ],
+            "stats": slices,
+        },
+    }
+
+
+def _build_tilt_context_from_games(games, player_data=None, tz_offset=3):
+    """
+    Main orchestrator. Returns template context vars for the tilt panel.
+
+    States:
+      - 'unavailable' — profile has games but archive didn't return them
+      - 'empty'       — fewer than 10 games available
+      - 'ok'          — full analysis context
+    """
+    games = sorted(games or [], key=lambda g: g.get("ts") or 0)
+    game_count = len(games)
+
+    if game_count < 10:
+        known_total = (player_data or {}).get("total_games") or 0
+        # Profile says player has games but we couldn't load them
+        if known_total >= 10 and game_count == 0:
+            return {"tilt_state": "unavailable", "tilt_game_count": game_count}
+        return {"tilt_state": "empty", "tilt_game_count": game_count}
+
+    latest_ts_ms = int(timezone.now().timestamp() * 1000)
+    slices = _compute_slices(games, tz_offset, latest_ts_ms)
+    return _active_context(slices, tz_offset)
+
+
+def _user_tz_offset(user):
+    """Read the user's timezone offset (hours from UTC). Defaults to 3 (Turkey)."""
+    profile = getattr(user, "userprofile", None)
+    if profile is None:
+        try:
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+        except Exception:
+            return 3
+    # NB: don't use `or 3` here — UTC (offset=0) is a valid value, not falsy default.
+    value = getattr(profile, "timezone_offset", None)
+    return 3 if value is None else value
+
+
+def _build_chesscom_tilt_context(username, player_data=None, tz_offset=3):
+    games = chesscom_api.get_all_games(username, months_back=12)
+    return _build_tilt_context_from_games(games, player_data, tz_offset)
+
+
+def _build_lichess_tilt_context(username, player_data=None, tz_offset=3):
+    games = lichess_api.get_all_games(username, months_back=12)
+    return _build_tilt_context_from_games(games, player_data, tz_offset)
+
+
+# ---------------------------------------------------------------------------
+# Page views
+# ---------------------------------------------------------------------------
+
 def home_both(request):
     """Combined view — chess.com on the left, lichess on the right."""
-    # Always pass an empty payload skeleton so the JSON script tag is valid
-    # even on guest/empty states (the JS exits if there's no chart canvas).
     empty_payload = {
         'chesscom': {'bullet': [], 'blitz': [], 'rapid': [], 'classical': [], 'daily': []},
         'lichess':  {'bullet': [], 'blitz': [], 'rapid': [], 'classical': [], 'daily': []},
@@ -49,30 +257,22 @@ def home_both(request):
             'bullet':    _dated(chesscom_data, 'bullet'),
             'blitz':     _dated(chesscom_data, 'blitz'),
             'rapid':     _dated(chesscom_data, 'rapid'),
-            'classical': [],                                  # chess.com has no classical
-            'daily':     _dated(chesscom_data, 'daily'),       # chess.com daily (correspondence)
+            'classical': [],
+            'daily':     _dated(chesscom_data, 'daily'),
         },
         'lichess': {
             'bullet':    _dated(lichess_data, 'bullet'),
             'blitz':     _dated(lichess_data, 'blitz'),
             'rapid':     _dated(lichess_data, 'rapid'),
             'classical': _dated(lichess_data, 'classical'),
-            'daily':     [],                                   # lichess has correspondence, not daily
+            'daily':     [],
         },
     }
     return render(request, 'analyzer/both.html', context)
 
 
 def home_chesscom(request):
-    """
-    Chess.com stats page.
-
-    States the template handles:
-      - user not authenticated      → ask to sign in
-      - no chess.com username saved → ask to set it on /profile
-      - api lookup failed/404       → error card
-      - success                     → render real data
-    """
+    """Chess.com stats page with inline tilt panel."""
     context = {'platform': 'chesscom'}
 
     if not request.user.is_authenticated:
@@ -92,13 +292,15 @@ def home_chesscom(request):
         context['attempted_username'] = chesscom_username
         return render(request, 'analyzer/chesscom.html', context)
 
+    tz_offset = _user_tz_offset(request.user)
     context['state'] = 'ok'
     context['player'] = data
+    context.update(_build_chesscom_tilt_context(chesscom_username, data, tz_offset))
     return render(request, 'analyzer/chesscom.html', context)
 
 
 def home_lichess(request):
-    """Lichess stats page — mirrors home_chesscom's state machine."""
+    """Lichess stats page with inline tilt panel."""
     context = {'platform': 'lichess'}
 
     if not request.user.is_authenticated:
@@ -118,8 +320,10 @@ def home_lichess(request):
         context['attempted_username'] = lichess_username
         return render(request, 'analyzer/lichess.html', context)
 
+    tz_offset = _user_tz_offset(request.user)
     context['state'] = 'ok'
     context['player'] = data
+    context.update(_build_lichess_tilt_context(lichess_username, data, tz_offset))
     return render(request, 'analyzer/lichess.html', context)
 
 
