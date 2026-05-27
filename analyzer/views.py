@@ -1,8 +1,12 @@
+import datetime as _datetime
+
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 
 from . import chesscom_api, lichess_api, tilt as tilt_module
 from .forms import UserProfileForm
@@ -30,7 +34,8 @@ PERIOD_DEFS = (
     ("30d", "30D", "last 30 days", 30),
     ("90d", "90D", "last 90 days", 90),
     ("6m",  "6M",  "last 6 months", 183),
-    ("12m", "12M", "last 12 months", None),
+    ("12m", "12M", "last 12 months", 365),
+    ("all", "All", "all time", None),
 )
 DEFAULT_PERIOD = "12m"
 DEFAULT_TC = "total"
@@ -205,13 +210,93 @@ def _user_tz_offset(user):
 
 
 def _build_chesscom_tilt_context(username, player_data=None, tz_offset=3):
-    games = chesscom_api.get_all_games(username, months_back=12)
+    games = chesscom_api.get_all_games(username, months_back=None)
     return _build_tilt_context_from_games(games, player_data, tz_offset)
 
 
 def _build_lichess_tilt_context(username, player_data=None, tz_offset=3):
-    games = lichess_api.get_all_games(username, months_back=12)
+    games = lichess_api.get_all_games(username, months_back=None)
     return _build_tilt_context_from_games(games, player_data, tz_offset)
+
+
+def _slices_for_range(games, tz_offset, from_ts_ms, to_ts_ms):
+    """Returns {tc_key: slice_stats} for games filtered by [from_ts_ms, to_ts_ms]."""
+    if from_ts_ms is not None or to_ts_ms is not None:
+        period_games = [
+            g for g in games
+            if (from_ts_ms is None or (g.get("ts") or 0) >= from_ts_ms)
+            and (to_ts_ms is None or (g.get("ts") or 0) <= to_ts_ms)
+        ]
+    else:
+        period_games = games
+
+    result = {"total": _slice_stats(period_games, tz_offset)}
+    for tc in TIME_CLASSES:
+        tc_games = [g for g in period_games if g.get("time_class") == tc]
+        result[tc] = _slice_stats(tc_games, tz_offset)
+    return result
+
+
+def _parse_iso_date_to_ts_ms(value, end_of_day=False):
+    """Parse YYYY-MM-DD into UTC timestamp in milliseconds. Returns None on empty."""
+    if not value:
+        return None
+    parsed = _datetime.datetime.strptime(value, "%Y-%m-%d")
+    if end_of_day:
+        parsed = parsed.replace(hour=23, minute=59, second=59)
+    parsed = parsed.replace(tzinfo=_datetime.timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
+@login_required
+@require_GET
+def tilt_range(request):
+    """AJAX: returns tilt slices for a custom date range."""
+    platform = (request.GET.get("platform") or "").strip().lower()
+    from_str = request.GET.get("from") or ""
+    to_str = request.GET.get("to") or ""
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+    if platform == "chesscom":
+        username = (profile.chesscom_username or "").strip()
+        fetch = lambda u: chesscom_api.get_all_games(u, months_back=None)
+    elif platform == "lichess":
+        username = (profile.lichess_username or "").strip()
+        fetch = lambda u: lichess_api.get_all_games(u, months_back=None)
+    else:
+        return JsonResponse({"error": "invalid_platform"}, status=400)
+
+    if not username:
+        return JsonResponse({"error": "no_username"}, status=400)
+
+    try:
+        from_ts_ms = _parse_iso_date_to_ts_ms(from_str, end_of_day=False)
+        to_ts_ms = _parse_iso_date_to_ts_ms(to_str, end_of_day=True)
+    except ValueError:
+        return JsonResponse({"error": "invalid_date"}, status=400)
+
+    if from_ts_ms is not None and to_ts_ms is not None and from_ts_ms > to_ts_ms:
+        return JsonResponse({"error": "invalid_range"}, status=400)
+
+    games = fetch(username)
+    tz_offset = _user_tz_offset(request.user)
+    slices = _slices_for_range(games, tz_offset, from_ts_ms, to_ts_ms)
+
+    if from_str and to_str:
+        label = f"{from_str} – {to_str}"
+    elif from_str:
+        label = f"since {from_str}"
+    elif to_str:
+        label = f"up to {to_str}"
+    else:
+        label = "all time"
+
+    return JsonResponse({
+        "stats": slices,
+        "label": label,
+        "total_games": slices["total"]["total_games"],
+    })
 
 
 # ---------------------------------------------------------------------------

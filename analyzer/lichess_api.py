@@ -349,17 +349,18 @@ def get_all_games(username, months_back=12, max_games=2000):
     if cached is not None:
         return cached
 
-    since = datetime.now(timezone.utc) - timedelta(days=31 * months_back)
     url = f"{BASE_URL}/games/user/{username}"
     params = {
         "max": max_games,
-        "since": int(since.timestamp() * 1000),
         "sort": "dateAsc",
         "moves": "false",
         "clocks": "false",
         "evals": "false",
         "opening": "false",
     }
+    if months_back:
+        since = datetime.now(timezone.utc) - timedelta(days=31 * months_back)
+        params["since"] = int(since.timestamp() * 1000)
 
     try:
         resp = _session.get(

@@ -1,3 +1,4 @@
+{% load static %}
 {% comment %}
 ============================================================
 Reusable tilt analysis panel.
@@ -29,11 +30,21 @@ Required context vars (provided by views._build_tilt_context_from_games):
         data-tilt-toggle
         aria-expanded="false"
         aria-controls="tilt-inline-panel">
-    <div class="tilt-cta-text">
-        <h3>Run Tilt Analysis →</h3>
-        <p>See how your win rate changes after a loss, by hour of day, and through long sessions.</p>
-    </div>
-    <span class="tilt-cta-arrow" aria-hidden="true">→</span>
+    <span class="tilt-cta-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18">
+            <path d="M4 19h16M6 15V8m4 7V5m4 10v-9m4 9v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </span>
+    <span class="tilt-cta-body">
+        <span class="tilt-cta-title">Tilt analysis</span>
+        <span class="tilt-cta-sub">Win-rate patterns after losses, by hour, by session</span>
+    </span>
+    <span class="tilt-cta-state" data-tilt-cta-state>
+        <span data-tilt-cta-state-label>Open</span>
+        <svg class="tilt-cta-chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </span>
 </button>
 
 <section class="tilt-inline-panel" id="tilt-inline-panel" hidden>
@@ -81,8 +92,23 @@ Required context vars (provided by views._build_tilt_context_from_games):
                             {{ short_label }}
                         </button>
                     {% endfor %}
+                    <button type="button" class="tc-btn tilt-period-custom-btn" data-tilt-period="custom" role="tab" aria-selected="false" hidden>
+                        <span data-tilt-custom-label>Custom</span>
+                    </button>
                 </div>
             </div>
+        </div>
+
+        <div class="tilt-custom-range" data-tilt-range data-tilt-platform="{{ platform }}">
+            <span class="tilt-custom-range-label">Custom range</span>
+            <div class="tilt-custom-range-inputs">
+                <input type="date" data-tilt-range-from aria-label="Start date">
+                <span class="tilt-custom-range-sep">—</span>
+                <input type="date" data-tilt-range-to aria-label="End date">
+                <button type="button" class="tc-btn tilt-custom-range-apply" data-tilt-range-apply>Apply</button>
+                <button type="button" class="tilt-custom-range-clear" data-tilt-range-clear hidden aria-label="Clear custom range">×</button>
+            </div>
+            <span class="tilt-custom-range-status" data-tilt-range-status hidden></span>
         </div>
 
         <div class="tilt-mini-stats">
@@ -111,7 +137,11 @@ Required context vars (provided by views._build_tilt_context_from_games):
                     <span>{{ tilt_tz_label|default:"UTC+3" }}</span>
                 </div>
                 <div class="tilt-inline-canvas">
-                    <canvas id="tilt-hourly-chart"></canvas>
+                    <div class="tilt-inline-canvas-scroll">
+                        <div class="tilt-inline-canvas-inner">
+                            <canvas id="tilt-hourly-chart"></canvas>
+                        </div>
+                    </div>
                     <div class="tilt-inline-empty" id="tilt-hourly-empty" hidden>No hourly data yet.</div>
                 </div>
             </article>
@@ -174,6 +204,25 @@ Required context vars (provided by views._build_tilt_context_from_games):
 
     let rendered = false;
     const tiltChartInstances = [];
+    const hourlyBarImages = {
+        green: "{% static 'images/graphgreen.png' %}",
+        gray: "{% static 'images/graphgray.png' %}",
+        red: "{% static 'images/graphred.png' %}",
+    };
+    const loadedHourlyBarImages = {};
+
+    Object.entries(hourlyBarImages).forEach(([key, src]) => {
+        const image = new Image();
+        image.onload = function () {
+            loadedHourlyBarImages[key] = prepareHourlyBarImage(image);
+            if (!panel.hidden && rendered) renderTiltCharts();
+        };
+        image.onerror = function () {
+            loadedHourlyBarImages[key] = null;
+        };
+        image.src = src;
+        loadedHourlyBarImages[key] = image;
+    });
 
     function cssVar(name, fallback) {
         const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -191,6 +240,10 @@ Required context vars (provided by views._build_tilt_context_from_games):
         return `rgba(${(raw >> 16) & 255}, ${(raw >> 8) & 255}, ${raw & 255}, ${opacity})`;
     }
 
+    function isDarkTheme() {
+        return document.documentElement.dataset.theme === 'dark';
+    }
+
     function readColors() {
         return {
             text: cssVar('--text', '#17202c'),
@@ -202,6 +255,31 @@ Required context vars (provided by views._build_tilt_context_from_games):
             neutral: cssVar('--chart-neutral', '#8b95a3'),
             grid: cssVar('--chart-grid', 'rgba(94, 105, 119, 0.16)'),
         };
+    }
+
+    function sessionLineColor(colors) {
+        return colors.green;
+    }
+
+    function sessionGridColor(colors) {
+        return isDarkTheme() ? 'rgba(255, 255, 255, 0.075)' : rgba(colors.muted, 0.14);
+    }
+
+    function sessionFillGradient(chart, colors) {
+        const area = chart.chartArea;
+        if (!area) return rgba(sessionLineColor(colors), 0.14);
+
+        const gradient = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+        if (isDarkTheme()) {
+            gradient.addColorStop(0, rgba(colors.green, 0.24));
+            gradient.addColorStop(0.62, rgba(colors.green, 0.08));
+            gradient.addColorStop(1, rgba(colors.green, 0));
+        } else {
+            gradient.addColorStop(0, rgba(colors.green, 0.20));
+            gradient.addColorStop(0.62, rgba(colors.green, 0.07));
+            gradient.addColorStop(1, rgba(colors.green, 0));
+        }
+        return gradient;
     }
 
     function setEmpty(canvasId, isEmpty, message) {
@@ -255,6 +333,207 @@ Required context vars (provided by views._build_tilt_context_from_games):
         if (value >= baseline + 3) return colors.green;
         if (value <= baseline - 3) return colors.red;
         return rgba(colors.neutral, 0.55);
+    }
+
+    function barImageKey(value, baseline) {
+        if (value === null || value === undefined) return 'gray';
+        if (baseline === null || baseline === undefined) return 'green';
+        if (value >= baseline + 3) return 'green';
+        if (value <= baseline - 3) return 'red';
+        return 'gray';
+    }
+
+    function roundedRect(ctx, x, y, width, height, radius) {
+        const corner = Math.min(radius, width / 2, height / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + corner, y);
+        ctx.lineTo(x + width - corner, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + corner);
+        ctx.lineTo(x + width, y + height - corner);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - corner, y + height);
+        ctx.lineTo(x + corner, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - corner);
+        ctx.lineTo(x, y + corner);
+        ctx.quadraticCurveTo(x, y, x + corner, y);
+        ctx.closePath();
+    }
+
+    function prepareHourlyBarImage(image) {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0);
+
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = pixels.data;
+        for (let index = 0; index < data.length; index += 4) {
+            const red = data[index];
+            const green = data[index + 1];
+            const blue = data[index + 2];
+            const lightness = (red + green + blue) / 3;
+
+            if (red > 245 && green > 245 && blue > 245) {
+                data[index + 3] = 0;
+            } else if (red > 225 && green > 225 && blue > 225) {
+                data[index + 3] *= Math.max(0, Math.min(1, (255 - lightness) / 30));
+            }
+        }
+
+        let minX = canvas.width;
+        let minY = canvas.height;
+        let maxX = -1;
+        let maxY = -1;
+        for (let index = 0; index < data.length; index += 4) {
+            if (data[index + 3] <= 8) continue;
+            const pixel = index / 4;
+            const x = pixel % canvas.width;
+            const y = Math.floor(pixel / canvas.width);
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+        }
+
+        ctx.putImageData(pixels, 0, 0);
+
+        if (maxX < minX || maxY < minY) {
+            return canvas;
+        }
+
+        const padding = 8;
+        const cropX = Math.max(0, minX - padding);
+        const cropY = Math.max(0, minY - padding);
+        const cropRight = Math.min(canvas.width, maxX + padding);
+        const cropBottom = Math.min(canvas.height, maxY + padding);
+        const cropWidth = cropRight - cropX;
+        const cropHeight = cropBottom - cropY;
+        const trimmedCanvas = document.createElement('canvas');
+        trimmedCanvas.width = cropWidth;
+        trimmedCanvas.height = cropHeight;
+        trimmedCanvas
+            .getContext('2d')
+            .drawImage(canvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+        return trimmedCanvas;
+    }
+
+    function barFillForKey(imageKey, colors) {
+        if (imageKey === 'red') return colors.red;
+        if (imageKey === 'gray') return rgba(colors.neutral, isDarkTheme() ? 0.62 : 0.54);
+        return colors.green;
+    }
+
+    function drawPieceMarker(ctx, image, x, top, chartArea, fallbackColor, options = {}) {
+        const markerWidth = options.width || 26;
+        const markerHeight = options.height || 50;
+        const overlap = options.overlap || 16;
+        const markerTop = Math.max(chartArea.top + 2, top - markerHeight + overlap);
+        const markerLeft = x - markerWidth / 2;
+
+        if (image && ((image.complete && image.naturalWidth) || image.width)) {
+            ctx.drawImage(image, markerLeft, markerTop, markerWidth, markerHeight);
+            return;
+        }
+
+        ctx.save();
+        ctx.fillStyle = fallbackColor;
+        roundedRect(ctx, markerLeft + 4, markerTop + 6, markerWidth - 8, markerHeight - 12, 5);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function sampleQueenAspect() {
+        for (const key of ['green', 'gray', 'red']) {
+            const img = loadedHourlyBarImages[key];
+            if (img && img.width && img.height) {
+                return img.width / img.height;
+            }
+        }
+        return 0.4;
+    }
+
+    function getSlotWidthForChart(chart, index) {
+        const scale = chart.scales && chart.scales.x;
+        if (!scale || typeof scale.getPixelForValue !== 'function') return null;
+        const here = scale.getPixelForValue(index);
+        const next = scale.getPixelForValue(index + 1);
+        const prev = scale.getPixelForValue(index - 1);
+        const candidates = [];
+        if (Number.isFinite(next) && Number.isFinite(here)) candidates.push(Math.abs(next - here));
+        if (Number.isFinite(prev) && Number.isFinite(here)) candidates.push(Math.abs(here - prev));
+        return candidates.length ? Math.min.apply(null, candidates) : null;
+    }
+
+    function queenBarsPlugin(id, imageKeys, colors, options = {}) {
+        const minHeight = options.minHeight || 18;
+        const maxSlotFill = options.maxSlotFill || 1.0;   // visual width never exceeds slot
+        return {
+            id,
+            beforeDatasetsDraw(chart) {
+                const meta = chart.getDatasetMeta(0);
+                if (!meta || meta.type !== 'bar') return;
+
+                const ctx = chart.ctx;
+                const area = chart.chartArea;
+                if (!area) return;
+                const aspect = sampleQueenAspect();
+
+                meta.data.forEach((bar, index) => {
+                    const value = chart.data.datasets[0].data[index];
+                    if (value === null || value === undefined) return;
+
+                    const props = typeof bar.getProps === 'function'
+                        ? bar.getProps(['x', 'y', 'base', 'width'], true)
+                        : bar;
+                    const bottom = Math.max(props.y, props.base);
+                    let height = Math.max(bottom - Math.min(props.y, props.base), minHeight);
+                    if (!Number.isFinite(height) || height <= 0) return;
+                    const top = bottom - height;
+
+                    const imageKey = imageKeys[index] || 'gray';
+                    const image = loadedHourlyBarImages[imageKey];
+                    const fill = barFillForKey(imageKey, colors);
+
+                    // Cap visual width at the slot so each queen lives inside its own hit zone.
+                    const slotWidth = getSlotWidthForChart(chart, index)
+                        || (props.width ? props.width / 0.74 : 24);
+                    const widthCap = slotWidth * maxSlotFill;
+                    const naturalWidth = height * aspect;
+                    const width = Math.min(naturalWidth, widthCap);
+                    const left = props.x - width / 2;
+
+                    ctx.save();
+                    if (image && ((image.complete && image.naturalWidth) || image.width)) {
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.globalAlpha = imageKey === 'gray' ? 0.85 : 1;
+                        ctx.drawImage(image, left, top, width, height);
+                        ctx.globalAlpha = 1;
+                    } else {
+                        ctx.fillStyle = fill;
+                        ctx.globalAlpha = imageKey === 'gray' ? 0.78 : 0.88;
+                        roundedRect(ctx, left, top, width, height, 6);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    }
+                    ctx.restore();
+                });
+            },
+        };
+    }
+
+    function hourlyImageBarsPlugin(imageKeys, colors) {
+        return queenBarsPlugin('tiltHourlyImageBars', imageKeys, colors, {
+            minHeight: 22,
+        });
+    }
+
+    function streakImageBarsPlugin(imageKeys, colors) {
+        return queenBarsPlugin('tiltStreakImageBars', imageKeys, colors, {
+            minHeight: 28,
+        });
     }
 
     function tooltip(colors, callbacks) {
@@ -419,23 +698,28 @@ Required context vars (provided by views._build_tilt_context_from_games):
         if (hasHourly) {
             const labels = hourly.map((row) => String(row.hour).padStart(2, '0'));
             const data = hourly.map((row) => row.winrate === null ? null : +(row.winrate * 100).toFixed(1));
+            const imageKeys = data.map((value) => barImageKey(value, baseline));
             makeChart('tilt-hourly-chart', {
                 type: 'bar',
                 data: {
                     labels,
                     datasets: [{
                         data,
-                        backgroundColor: data.map((value) => colorFor(value, baseline, colors)),
-                        borderRadius: 6,
+                        backgroundColor: 'rgba(0, 0, 0, 0)',
+                        hoverBackgroundColor: 'rgba(0, 0, 0, 0)',
+                        borderColor: 'rgba(0, 0, 0, 0)',
+                        borderWidth: 0,
+                        borderRadius: 8,
                         borderSkipped: false,
                         categoryPercentage: 0.72,
-                        barPercentage: 0.82,
+                        barPercentage: 0.74,
                     }],
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
+                    interaction: { mode: 'index', axis: 'x', intersect: false },
+                    events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
                     plugins: {
                         legend: { display: false },
                         tooltip: tooltip(colors, {
@@ -469,7 +753,7 @@ Required context vars (provided by views._build_tilt_context_from_games):
                         },
                     },
                 },
-            }, baselinePlugins);
+            }, baselinePlugins.concat(hourlyImageBarsPlugin(imageKeys, colors)));
         }
 
         const session = Array.isArray(slice.session_pos) ? slice.session_pos : [];
@@ -478,28 +762,31 @@ Required context vars (provided by views._build_tilt_context_from_games):
             const labels = session.map((row) => `#${row.position}`);
             const data = session.map((row) => +(row.winrate * 100).toFixed(1));
             const games = session.map((row) => row.games);
+            const sessionAccent = sessionLineColor(colors);
             makeChart('tilt-session-chart', {
                 type: 'line',
                 data: {
                     labels,
                     datasets: [{
                         data,
-                        borderColor: colors.green,
-                        backgroundColor: rgba(colors.green, 0.12),
+                        borderColor: sessionAccent,
+                        backgroundColor: (context) => sessionFillGradient(context.chart, colors),
                         fill: true,
-                        tension: 0.35,
-                        borderWidth: 2,
-                        pointRadius: 3.5,
-                        pointHoverRadius: 5,
-                        pointBackgroundColor: data.map((value) => colorFor(value, baseline, colors)),
+                        tension: 0.48,
+                        borderWidth: 3.25,
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        pointHitRadius: 14,
+                        pointBackgroundColor: sessionAccent,
                         pointBorderColor: colors.surface,
-                        pointBorderWidth: 2,
+                        pointBorderWidth: 3,
                     }],
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
+                    layout: { padding: { top: 8, right: 8, bottom: 0, left: 0 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: tooltip(colors, {
@@ -508,13 +795,26 @@ Required context vars (provided by views._build_tilt_context_from_games):
                         }),
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { color: colors.muted } },
+                        x: {
+                            border: { display: false },
+                            grid: { display: false },
+                            ticks: {
+                                color: rgba(colors.muted, isDarkTheme() ? 0.86 : 0.92),
+                                padding: 12,
+                                font: { size: 12, weight: '600' },
+                            },
+                        },
                         y: {
                             beginAtZero: true,
                             suggestedMax: 100,
                             border: { display: false },
-                            grid: { color: colors.grid, drawTicks: false },
-                            ticks: { color: colors.muted, callback: (value) => `${value}%` },
+                            grid: { color: sessionGridColor(colors), drawTicks: false },
+                            ticks: {
+                                color: rgba(colors.muted, isDarkTheme() ? 0.78 : 0.88),
+                                padding: 8,
+                                callback: (value) => `${value}%`,
+                                font: { size: 12, weight: '500' },
+                            },
                         },
                     },
                 },
@@ -528,40 +828,47 @@ Required context vars (provided by views._build_tilt_context_from_games):
 
         setEmpty('tilt-streak-chart', streakEntries.length === 0);
         if (streakEntries.length) {
+            const streakImageKeys = streakEntries.map(([length]) => length >= 4 ? 'red' : 'gray');
             makeChart('tilt-streak-chart', {
                 type: 'bar',
                 data: {
                     labels: streakEntries.map(([length]) => `${length} ❗`),
                     datasets: [{
                         data: streakEntries.map(([, count]) => count),
-                        backgroundColor: streakEntries.map(([length]) => length >= 4 ? colors.red : rgba(colors.neutral, 0.62)),
-                        borderRadius: 6,
+                        backgroundColor: 'rgba(0, 0, 0, 0)',
+                        hoverBackgroundColor: 'rgba(0, 0, 0, 0)',
+                        borderColor: 'rgba(0, 0, 0, 0)',
+                        borderWidth: 0,
+                        borderRadius: 8,
                         borderSkipped: false,
-                        barThickness: 16,
+                        barThickness: 18,
                     }],
                 },
                 options: {
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: { mode: 'index', axis: 'x', intersect: false },
                     plugins: {
                         legend: { display: false },
                         tooltip: tooltip(colors, {
                             title: (items) => `${items[0].label} losing streak`,
-                            label: (ctx) => `Happened ${ctx.parsed.x} time${ctx.parsed.x === 1 ? '' : 's'}`,
+                            label: (ctx) => `Happened ${ctx.parsed.y} time${ctx.parsed.y === 1 ? '' : 's'}`,
                         }),
                     },
                     scales: {
                         x: {
+                            grid: { display: false },
+                            ticks: { color: colors.muted },
+                        },
+                        y: {
                             beginAtZero: true,
                             border: { display: false },
                             grid: { color: colors.grid, drawTicks: false },
                             ticks: { precision: 0, color: colors.muted },
                         },
-                        y: { grid: { display: false }, ticks: { color: colors.muted } },
                     },
                 },
-            }, []);
+            }, [streakImageBarsPlugin(streakImageKeys, colors)]);
         }
 
         rendered = true;
@@ -571,11 +878,148 @@ Required context vars (provided by views._build_tilt_context_from_games):
         panel.hidden = !open;
         toggle.classList.toggle('is-open', open);
         toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-        const arrow = toggle.querySelector('.tilt-cta-arrow');
-        if (arrow) arrow.textContent = open ? '×' : '→';
+        const stateLabel = toggle.querySelector('[data-tilt-cta-state-label]');
+        if (stateLabel) stateLabel.textContent = open ? 'Close' : 'Open';
         if (open && !rendered) {
             window.requestAnimationFrame(renderTiltCharts);
         }
+    }
+
+    function showRangeStatus(message, isError) {
+        const status = panel.querySelector('[data-tilt-range-status]');
+        if (!status) return;
+        status.textContent = message;
+        status.hidden = false;
+        status.classList.toggle('is-error', !!isError);
+    }
+
+    function hideRangeStatus() {
+        const status = panel.querySelector('[data-tilt-range-status]');
+        if (!status) return;
+        status.hidden = true;
+        status.classList.remove('is-error');
+    }
+
+    function setRangeBusy(busy) {
+        const apply = panel.querySelector('[data-tilt-range-apply]');
+        if (apply) apply.disabled = !!busy;
+    }
+
+    function hideCustomPeriodTab() {
+        const customBtn = panel.querySelector('[data-tilt-period="custom"]');
+        const clearBtn = panel.querySelector('[data-tilt-range-clear]');
+        if (customBtn) {
+            customBtn.hidden = true;
+            customBtn.classList.remove('active');
+            customBtn.setAttribute('aria-selected', 'false');
+        }
+        if (clearBtn) clearBtn.hidden = true;
+        hideRangeStatus();
+    }
+
+    function activateCustomPeriod() {
+        const periodButtons = panel.querySelectorAll('[data-tilt-period]');
+        const customBtn = panel.querySelector('[data-tilt-period="custom"]');
+        const clearBtn = panel.querySelector('[data-tilt-range-clear]');
+        if (customBtn) {
+            customBtn.hidden = false;
+            setActive(periodButtons, customBtn);
+        }
+        if (clearBtn) clearBtn.hidden = false;
+    }
+
+    function applyCustomRange() {
+        const rangeRoot = panel.querySelector('[data-tilt-range]');
+        if (!rangeRoot) return;
+
+        const fromInput = panel.querySelector('[data-tilt-range-from]');
+        const toInput = panel.querySelector('[data-tilt-range-to]');
+        const fromValue = (fromInput && fromInput.value) ? fromInput.value : '';
+        const toValue = (toInput && toInput.value) ? toInput.value : '';
+
+        if (!fromValue && !toValue) {
+            showRangeStatus('Pick at least one date.', true);
+            return;
+        }
+        if (fromValue && toValue && fromValue > toValue) {
+            showRangeStatus('Start date must be on or before end date.', true);
+            return;
+        }
+
+        const platform = (rangeRoot.dataset.tiltPlatform || '').toLowerCase();
+        if (platform !== 'chesscom' && platform !== 'lichess') {
+            showRangeStatus('Custom range not available here.', true);
+            return;
+        }
+
+        const url = new URL('{% url "analyzer:tilt_range" %}', window.location.origin);
+        url.searchParams.set('platform', platform);
+        if (fromValue) url.searchParams.set('from', fromValue);
+        if (toValue) url.searchParams.set('to', toValue);
+
+        setRangeBusy(true);
+        showRangeStatus('Loading…');
+
+        fetch(url.toString(), {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    if (!response.ok) {
+                        const err = new Error(data.error || 'request_failed');
+                        err.code = data.error;
+                        throw err;
+                    }
+                    return data;
+                });
+            })
+            .then(function (data) {
+                const payloadNode = document.getElementById('tilt-payload');
+                if (!payloadNode) throw new Error('payload_missing');
+                let payload = {};
+                try { payload = JSON.parse(payloadNode.textContent || '{}') || {}; } catch (e) { payload = {}; }
+                if (!payload.stats) payload.stats = {};
+                payload.stats.custom = data.stats;
+                if (!Array.isArray(payload.periods)) payload.periods = [];
+                const idx = payload.periods.findIndex(function (p) { return p.key === 'custom'; });
+                const meta = { key: 'custom', short_label: 'Custom', label: data.label || 'custom range' };
+                if (idx >= 0) payload.periods[idx] = meta;
+                else payload.periods.push(meta);
+                payloadNode.textContent = JSON.stringify(payload);
+
+                activateCustomPeriod();
+                hideRangeStatus();
+                renderTiltCharts();
+            })
+            .catch(function (error) {
+                const friendly = {
+                    no_username: 'Set your username first.',
+                    invalid_platform: 'Custom range not available here.',
+                    invalid_date: 'Date format invalid.',
+                    invalid_range: 'Start date must be on or before end date.',
+                }[error.code] || 'Failed to load.';
+                showRangeStatus(friendly, true);
+            })
+            .finally(function () {
+                setRangeBusy(false);
+            });
+    }
+
+    function clearCustomRange() {
+        const fromInput = panel.querySelector('[data-tilt-range-from]');
+        const toInput = panel.querySelector('[data-tilt-range-to]');
+        const defaultBtn = panel.querySelector('[data-tilt-period="12m"]')
+            || panel.querySelector('[data-tilt-period]:not(.tilt-period-custom-btn):not(:disabled)');
+
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+        hideCustomPeriodTab();
+
+        if (defaultBtn) {
+            setActive(panel.querySelectorAll('[data-tilt-period]'), defaultBtn);
+        }
+        if (rendered) renderTiltCharts();
     }
 
     toggle.addEventListener('click', function () {
@@ -583,16 +1027,37 @@ Required context vars (provided by views._build_tilt_context_from_games):
     });
 
     panel.addEventListener('click', function (event) {
+        if (event.target.closest('[data-tilt-range-apply]')) {
+            applyCustomRange();
+            return;
+        }
+        if (event.target.closest('[data-tilt-range-clear]')) {
+            clearCustomRange();
+            return;
+        }
+
         const tabButton = event.target.closest('[data-tilt-tc], [data-tilt-period]');
         if (!tabButton || tabButton.disabled) return;
 
         if (tabButton.matches('[data-tilt-tc]')) {
             setActive(panel.querySelectorAll('[data-tilt-tc]'), tabButton);
         } else {
+            if (tabButton.dataset.tiltPeriod !== 'custom') {
+                hideCustomPeriodTab();
+            }
             setActive(panel.querySelectorAll('[data-tilt-period]'), tabButton);
         }
 
         if (rendered) renderTiltCharts();
+    });
+
+    panel.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter') return;
+        const target = event.target;
+        if (target.matches('[data-tilt-range-from], [data-tilt-range-to]')) {
+            event.preventDefault();
+            applyCustomRange();
+        }
     });
 
     const themeToggle = document.querySelector('[data-theme-toggle]');

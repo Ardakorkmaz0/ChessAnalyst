@@ -10,4 +10,5 @@ urlpatterns = [
     path('lichess/', views.home_lichess, name='home_lichess'),
     path('profile/', views.profile, name='profile'),
     path('signup/', views.signup, name='signup'),
+    path('tilt/range/', views.tilt_range, name='tilt_range'),
 ]
