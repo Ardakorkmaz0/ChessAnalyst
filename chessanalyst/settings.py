@@ -84,6 +84,19 @@ DATABASES = {
 }
 
 
+# Cache — persistent, shared across workers, survives restarts.
+# Backs the external chess.com / lichess API responses so pages don't re-fetch
+# archives on every request. Uses the existing Postgres DB (no extra infra).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'chessanalyst_cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {'MAX_ENTRIES': 10000, 'CULL_FREQUENCY': 4},
+    }
+}
+
+
 # Password rules.
 
 AUTH_PASSWORD_VALIDATORS = [

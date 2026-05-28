@@ -47,16 +47,18 @@ Required context vars (provided by views._build_tilt_context_from_games):
     </span>
 </button>
 
-<section class="tilt-inline-panel" id="tilt-inline-panel" hidden>
-    {% if tilt_state == 'ok' %}
+<section class="tilt-inline-panel" id="tilt-inline-panel"
+         data-tilt-data-url="{% url 'analyzer:tilt_data' %}"
+         data-tilt-platform="{{ platform }}"
+         data-tilt-username="{{ viewed_username|default:'' }}"
+         hidden>
+    <div data-tilt-body>
         <div class="tilt-inline-head">
             <div>
                 <h2>Tilt summary</h2>
-                <p data-tilt-summary-copy>{{ tilt_total_games }} games analyzed in {{ tilt_period_label }}.</p>
+                <p data-tilt-summary-copy>Analyzing your recent games…</p>
             </div>
-            <span class="tilt-inline-status {{ tilt_status_class }}" data-tilt-status>
-                {{ tilt_status_text }}
-            </span>
+            <span class="tilt-inline-status is-neutral" data-tilt-status>Loading…</span>
         </div>
 
         <div class="tilt-filter-bar">
@@ -66,19 +68,19 @@ Required context vars (provided by views._build_tilt_context_from_games):
                     <button type="button" class="tc-btn active" data-tilt-tc="total" role="tab" aria-selected="true">
                         <span class="tc-tab-long">Total</span><span class="tc-tab-short">All</span>
                     </button>
-                    <button type="button" class="tc-btn" data-tilt-tc="bullet" role="tab" {% if not tilt_time_class_counts.bullet %}disabled{% endif %}>
+                    <button type="button" class="tc-btn" data-tilt-tc="bullet" role="tab">
                         <span class="tc-tab-long">Bullet</span><span class="tc-tab-short">Bu</span>
                     </button>
-                    <button type="button" class="tc-btn" data-tilt-tc="blitz" role="tab" {% if not tilt_time_class_counts.blitz %}disabled{% endif %}>
+                    <button type="button" class="tc-btn" data-tilt-tc="blitz" role="tab">
                         <span class="tc-tab-long">Blitz</span><span class="tc-tab-short">Bl</span>
                     </button>
-                    <button type="button" class="tc-btn" data-tilt-tc="rapid" role="tab" {% if not tilt_time_class_counts.rapid %}disabled{% endif %}>
+                    <button type="button" class="tc-btn" data-tilt-tc="rapid" role="tab">
                         <span class="tc-tab-long">Rapid</span><span class="tc-tab-short">Ra</span>
                     </button>
-                    <button type="button" class="tc-btn" data-tilt-tc="classical" role="tab" {% if not tilt_time_class_counts.classical %}disabled{% endif %}>
+                    <button type="button" class="tc-btn" data-tilt-tc="classical" role="tab">
                         <span class="tc-tab-long">Classical</span><span class="tc-tab-short">Cl</span>
                     </button>
-                    <button type="button" class="tc-btn" data-tilt-tc="daily" role="tab" {% if not tilt_time_class_counts.daily %}disabled{% endif %}>
+                    <button type="button" class="tc-btn" data-tilt-tc="daily" role="tab">
                         <span class="tc-tab-long">Daily</span><span class="tc-tab-short">Da</span>
                     </button>
                 </div>
@@ -114,19 +116,19 @@ Required context vars (provided by views._build_tilt_context_from_games):
         <div class="tilt-mini-stats">
             <div class="tilt-mini-stat">
                 <span>Baseline</span>
-                <strong data-tilt-baseline>{{ tilt_baseline_pct }}{% if tilt_baseline_pct != '-' %}%{% endif %}</strong>
+                <strong data-tilt-baseline>—</strong>
             </div>
             <div class="tilt-mini-stat">
                 <span>After loss</span>
-                <strong data-tilt-post-loss>{{ tilt_post_loss_pct }}{% if tilt_post_loss_pct != '-' %}%{% endif %}</strong>
+                <strong data-tilt-post-loss>—</strong>
             </div>
             <div class="tilt-mini-stat">
                 <span>After-loss change</span>
-                <strong class="{{ tilt_delta_class }}" data-tilt-delta>{{ tilt_delta_display }}</strong>
+                <strong class="is-neutral" data-tilt-delta>—</strong>
             </div>
             <div class="tilt-mini-stat">
                 <span>🔥 Longest streak</span>
-                <strong data-tilt-streak>{{ tilt_max_loss_streak }}</strong>
+                <strong data-tilt-streak>—</strong>
             </div>
         </div>
 
@@ -169,38 +171,33 @@ Required context vars (provided by views._build_tilt_context_from_games):
             </article>
         </div>
 
-        {% if tilt_insights %}
-        <ul class="tilt-inline-insights" data-tilt-insights>
-            {% for insight in tilt_insights %}
-                <li class="insight-{{ insight.icon }}">{{ insight.text }}</li>
-            {% endfor %}
-        </ul>
-        {% else %}
         <ul class="tilt-inline-insights" data-tilt-insights hidden></ul>
-        {% endif %}
+    </div>
 
-    {% elif tilt_state == 'unavailable' %}
-        <div class="tilt-inline-empty-state">
-            <h3>Tilt analysis unavailable</h3>
-            <p>Your profile stats loaded, but the platform did not return the recent game archive for tilt analysis. Refresh in a moment.</p>
-        </div>
-    {% else %}
-        <div class="tilt-inline-empty-state">
-            <h3>Not enough games to analyze</h3>
-            <p>We need at least 10 games in the last 12 months. Found {{ tilt_game_count|default:0 }}.</p>
-        </div>
-    {% endif %}
+    <div class="tilt-inline-loading" data-tilt-loading hidden>
+        <span class="tilt-loading-spinner" aria-hidden="true"></span>
+        <span>Analyzing your games…</span>
+    </div>
+
+    <div class="tilt-inline-empty-state" data-tilt-empty-state hidden>
+        <h3 data-tilt-empty-title>Not enough games to analyze</h3>
+        <p data-tilt-empty-text>We need at least 10 games to analyze tilt.</p>
+    </div>
 </section>
 
-{% if tilt_state == 'ok' %}
-    {{ tilt_payload|json_script:"tilt-payload" }}
-{% endif %}
+<script id="tilt-payload" type="application/json">{}</script>
 
 <script>
 (function () {
     const toggle = document.querySelector('[data-tilt-toggle]');
     const panel = document.getElementById('tilt-inline-panel');
     if (!toggle || !panel) return;
+
+    const tiltDataUrl = panel.dataset.tiltDataUrl;
+    const tiltPlatform = panel.dataset.tiltPlatform;
+    const tiltUsername = panel.dataset.tiltUsername;
+    let dataLoaded = false;
+    let dataLoading = false;
 
     let rendered = false;
     const tiltChartInstances = [];
@@ -874,14 +871,69 @@ Required context vars (provided by views._build_tilt_context_from_games):
         rendered = true;
     }
 
+    function showTiltLoading(on) {
+        const el = panel.querySelector('[data-tilt-loading]');
+        if (el) el.hidden = !on;
+    }
+
+    function showTiltEmpty(state) {
+        const body = panel.querySelector('[data-tilt-body]');
+        const empty = panel.querySelector('[data-tilt-empty-state]');
+        if (body) body.hidden = true;
+        if (!empty) return;
+        empty.hidden = false;
+        const title = empty.querySelector('[data-tilt-empty-title]');
+        const text = empty.querySelector('[data-tilt-empty-text]');
+        if (state === 'unavailable') {
+            if (title) title.textContent = 'Tilt analysis unavailable';
+            if (text) text.textContent = 'The platform did not return recent games. Try again in a moment.';
+        } else if (state === 'error') {
+            if (title) title.textContent = 'Could not load analysis';
+            if (text) text.textContent = 'Something went wrong. Refresh the page and try again.';
+        } else {
+            if (title) title.textContent = 'Not enough games to analyze';
+            if (text) text.textContent = 'We need at least 10 games to analyze tilt.';
+        }
+    }
+
+    function loadTiltData() {
+        if (dataLoading) return;
+        if (dataLoaded) {
+            if (!rendered) window.requestAnimationFrame(renderTiltCharts);
+            return;
+        }
+        if (!tiltDataUrl || !tiltPlatform) { showTiltEmpty('error'); return; }
+
+        dataLoading = true;
+        showTiltLoading(true);
+        const url = new URL(tiltDataUrl, window.location.origin);
+        url.searchParams.set('platform', tiltPlatform);
+        if (tiltUsername) url.searchParams.set('username', tiltUsername);
+
+        fetch(url.toString(), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || data.state !== 'ok' || !data.payload || !data.payload.stats) {
+                    showTiltEmpty(data && data.state);
+                    return;
+                }
+                const node = document.getElementById('tilt-payload');
+                if (node) node.textContent = JSON.stringify(data.payload);
+                dataLoaded = true;
+                window.requestAnimationFrame(renderTiltCharts);
+            })
+            .catch(function () { showTiltEmpty('error'); })
+            .finally(function () { dataLoading = false; showTiltLoading(false); });
+    }
+
     function setOpen(open) {
         panel.hidden = !open;
         toggle.classList.toggle('is-open', open);
         toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         const stateLabel = toggle.querySelector('[data-tilt-cta-state-label]');
         if (stateLabel) stateLabel.textContent = open ? 'Close' : 'Open';
-        if (open && !rendered) {
-            window.requestAnimationFrame(renderTiltCharts);
+        if (open) {
+            loadTiltData();
         }
     }
 

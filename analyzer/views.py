@@ -219,6 +219,19 @@ def _build_lichess_tilt_context(username, player_data=None, tz_offset=3):
     return _build_tilt_context_from_games(games, player_data, tz_offset)
 
 
+def _tilt_lazy_context(tz_offset):
+    """Cheap context for the collapsed tilt panel — NO game fetch.
+
+    The heavy work (fetch all games + compute every slice) is deferred to the
+    tilt_data AJAX endpoint, which only runs when the user opens the panel.
+    This keeps the page-load critical path off the external chess archives.
+    """
+    return {
+        "tilt_period_defs": PERIOD_DEFS,
+        "tilt_tz_label": _tz_label(tz_offset),
+    }
+
+
 def _slices_for_range(games, tz_offset, from_ts_ms, to_ts_ms):
     """Returns {tc_key: slice_stats} for games filtered by [from_ts_ms, to_ts_ms]."""
     if from_ts_ms is not None or to_ts_ms is not None:
@@ -299,6 +312,37 @@ def tilt_range(request):
         "stats": slices,
         "label": label,
         "total_games": slices["total"]["total_games"],
+    })
+
+
+@login_required
+@require_GET
+def tilt_data(request):
+    """AJAX: full tilt payload for the panel (fetch games + compute all slices).
+
+    Runs only when the user opens the panel, keeping it off the page-load path.
+    """
+    platform = (request.GET.get("platform") or "").strip().lower()
+    override = (request.GET.get("username") or "").strip()
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    tz_offset = _user_tz_offset(request.user)
+
+    if platform == "chesscom":
+        username = override or (profile.chesscom_username or "").strip()
+        builder = _build_chesscom_tilt_context
+    elif platform == "lichess":
+        username = override or (profile.lichess_username or "").strip()
+        builder = _build_lichess_tilt_context
+    else:
+        return JsonResponse({"error": "invalid_platform"}, status=400)
+
+    if not username:
+        return JsonResponse({"state": "empty", "payload": {}})
+
+    ctx = builder(username, None, tz_offset)
+    return JsonResponse({
+        "state": ctx.get("tilt_state", "empty"),
+        "payload": ctx.get("tilt_payload") or {},
     })
 
 
@@ -390,7 +434,7 @@ def home_chesscom(request):
     tz_offset = _user_tz_offset(request.user)
     context['state'] = 'ok'
     context['player'] = data
-    context.update(_build_chesscom_tilt_context(username, data, tz_offset))
+    context.update(_tilt_lazy_context(tz_offset))   # tilt slices load on demand
     return render(request, 'analyzer/chesscom.html', context)
 
 
@@ -433,7 +477,7 @@ def home_lichess(request):
     tz_offset = _user_tz_offset(request.user)
     context['state'] = 'ok'
     context['player'] = data
-    context.update(_build_lichess_tilt_context(username, data, tz_offset))
+    context.update(_tilt_lazy_context(tz_offset))   # tilt slices load on demand
     return render(request, 'analyzer/lichess.html', context)
 
 

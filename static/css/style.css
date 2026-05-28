@@ -1945,6 +1945,7 @@ a {
 }
 
 .tilt-inline-panel {
+    position: relative;
     margin-top: 12px;
     padding: 22px;
     border: 1px solid var(--border);
@@ -1953,6 +1954,35 @@ a {
     box-shadow: 0 10px 30px rgba(23, 32, 44, 0.08);
     animation: tilt-panel-in 0.22s ease;
 }
+
+/* Lazy-load overlay — covers the skeleton while the AJAX payload arrives */
+.tilt-inline-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border-radius: 16px;
+    background: var(--bg-elev);
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.tilt-inline-loading[hidden] { display: none; }
+
+.tilt-loading-spinner {
+    width: 22px;
+    height: 22px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: tilt-spin 0.7s linear infinite;
+}
+
+@keyframes tilt-spin { to { transform: rotate(360deg); } }
 
 @keyframes tilt-panel-in {
     from { opacity: 0; transform: translateY(-4px); }

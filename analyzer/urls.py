@@ -13,5 +13,6 @@ urlpatterns = [
     path('compare/', views.compare, name='compare'),
     path('profile/', views.profile, name='profile'),
     path('signup/', views.signup, name='signup'),
+    path('tilt/data/', views.tilt_data, name='tilt_data'),
     path('tilt/range/', views.tilt_range, name='tilt_range'),
 ]
