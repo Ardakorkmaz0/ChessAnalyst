@@ -51,6 +51,138 @@ def fetch_stats(username):
     return _get(f"{BASE_URL}/{username.lower()}/stats")
 
 
+# -----------------------------------------------------------------------
+# Player search (autocomplete)
+# -----------------------------------------------------------------------
+
+POPUP_URL = "https://www.chess.com/callback/user/popup"
+SEARCH_TTL = 60 * 30                 # 30 min for a resolved query
+TITLED_INDEX_TTL = 60 * 60 * 24      # 24h for the titled-player index
+TITLED_TITLES = ("GM", "WGM", "IM", "WIM", "FM", "WFM", "NM", "WNM", "CM", "WCM")
+# Prestige order so famous (usually higher-titled) players rank first.
+TITLE_RANK = {"GM": 0, "WGM": 1, "IM": 2, "WIM": 3, "FM": 4,
+              "WFM": 5, "CM": 6, "WCM": 7, "NM": 8, "WNM": 9}
+
+
+def _popup(username):
+    """Chess.com popup card for one exact username (avatar/title/real name).
+
+    Cached even on misses (empty string) so repeated lookups stay cheap.
+    """
+    username = (username or "").lower()
+    cache_key = f"chesscom:popup:{username}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    data = None
+    try:
+        resp = _session.get(f"{POPUP_URL}/{username}", timeout=TIMEOUT)
+        if resp.ok:
+            data = resp.json()
+    except (requests.RequestException, ValueError):
+        data = None
+
+    cache.set(cache_key, data or "", SEARCH_TTL)
+    return data
+
+
+def _fetch_titled(title):
+    data = _get(f"https://api.chess.com/pub/titled/{title}")
+    return title, ((data or {}).get("players") or [])
+
+
+def _titled_index():
+    """{username_lower: title} for every titled Chess.com player. Cached 24h.
+
+    Chess.com exposes no fuzzy search API, but it does publish the full roster
+    of titled players per title — enough to power a real autocomplete for the
+    famous accounts people actually look up.
+    """
+    cache_key = "chesscom:titled_index:v1"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    index = {}
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+        for title, players in executor.map(_fetch_titled, TITLED_TITLES):
+            for username in players:
+                index.setdefault(username.lower(), title)   # keep first (higher) title
+
+    if index:
+        cache.set(cache_key, index, TITLED_INDEX_TTL)
+    return index
+
+
+def _card(username, title=""):
+    """Build a dropdown card, enriching with popup data (avatar/name) when possible."""
+    popup = _popup(username)
+    name, avatar, country = username, "", ""
+    if popup:
+        first = (popup.get("firstName") or "").strip()
+        last = (popup.get("lastName") or "").strip()
+        name = f"{first} {last}".strip() or username
+        avatar = popup.get("avatarUrl") or ""
+        country = popup.get("countryName") or ""
+        title = popup.get("chessTitle") or title
+    return {
+        "username": username,
+        "name": name,
+        "title": title or "",
+        "avatar": avatar,
+        "country": country,
+    }
+
+
+def search_player(query):
+    """Chess.com player autocomplete.
+
+    Matches the query against the full titled-player roster (prefix first, then
+    substring) and also tries an exact-username popup for non-titled players, so
+    typing "magnus" surfaces "magnuscarlsen". Returns up to 8 cards with avatar.
+    """
+    raw = (query or "").strip()
+    if len(raw) < 2:
+        return []
+    q = raw.lower().replace(" ", "")
+
+    cache_key = f"chesscom:search:v2:{q}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    index = _titled_index()
+
+    exact, starts, contains = [], [], []
+    for username, title in index.items():
+        if username == q:
+            exact.append((username, title))
+        elif username.startswith(q):
+            starts.append((username, title))
+        elif q in username:
+            contains.append((username, title))
+    def _rank(item):
+        username, title = item
+        return (TITLE_RANK.get(title, 99), len(username))
+
+    starts.sort(key=_rank)
+    contains.sort(key=_rank)
+    ranked = exact + starts + contains
+
+    # Include a non-titled exact match the roster doesn't cover.
+    if q not in {u for u, _ in ranked} and _popup(q):
+        ranked.insert(0, (q, ""))
+
+    ranked = ranked[:8]
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda item: _card(item[0], item[1]), ranked))
+
+    cache.set(cache_key, results, SEARCH_TTL)
+    return results
+
+
 def fetch_country_name(code):
     """Country name for a 2-letter code, cached 24h."""
     if not code:

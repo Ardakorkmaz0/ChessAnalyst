@@ -258,11 +258,14 @@ def tilt_range(request):
 
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
+    # Optional ?username= lets the panel work while previewing another player.
+    override = (request.GET.get("username") or "").strip()
+
     if platform == "chesscom":
-        username = (profile.chesscom_username or "").strip()
+        username = override or (profile.chesscom_username or "").strip()
         fetch = lambda u: chesscom_api.get_all_games(u, months_back=None)
     elif platform == "lichess":
-        username = (profile.lichess_username or "").strip()
+        username = override or (profile.lichess_username or "").strip()
         fetch = lambda u: lichess_api.get_all_games(u, months_back=None)
     else:
         return JsonResponse({"error": "invalid_platform"}, status=400)
@@ -365,23 +368,38 @@ def home_chesscom(request):
         return render(request, 'analyzer/chesscom.html', context)
 
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    chesscom_username = (profile.chesscom_username or '').strip()
+    own_username = (profile.chesscom_username or '').strip()
+    viewed = (request.GET.get('u') or '').strip()
 
-    if not chesscom_username:
+    # ?u=<username> previews another player without touching the saved profile.
+    username = viewed or own_username
+    context['own_username'] = own_username
+    context['viewed_username'] = username
+    context['viewing_other'] = bool(viewed) and viewed.lower() != own_username.lower()
+
+    if not username:
         context['state'] = 'no_username'
         return render(request, 'analyzer/chesscom.html', context)
 
-    data = chesscom_api.get_player_data(chesscom_username)
+    data = chesscom_api.get_player_data(username)
     if data is None:
         context['state'] = 'not_found'
-        context['attempted_username'] = chesscom_username
+        context['attempted_username'] = username
         return render(request, 'analyzer/chesscom.html', context)
 
     tz_offset = _user_tz_offset(request.user)
     context['state'] = 'ok'
     context['player'] = data
-    context.update(_build_chesscom_tilt_context(chesscom_username, data, tz_offset))
+    context.update(_build_chesscom_tilt_context(username, data, tz_offset))
     return render(request, 'analyzer/chesscom.html', context)
+
+
+@login_required
+@require_GET
+def chesscom_search(request):
+    """AJAX autocomplete: resolve a Chess.com username to a result card."""
+    results = chesscom_api.search_player(request.GET.get('q', ''))
+    return JsonResponse({'results': results})
 
 
 def home_lichess(request):
@@ -393,23 +411,38 @@ def home_lichess(request):
         return render(request, 'analyzer/lichess.html', context)
 
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    lichess_username = (profile.lichess_username or '').strip()
+    own_username = (profile.lichess_username or '').strip()
+    viewed = (request.GET.get('u') or '').strip()
 
-    if not lichess_username:
+    # ?u=<username> previews another player without touching the saved profile.
+    username = viewed or own_username
+    context['own_username'] = own_username
+    context['viewed_username'] = username
+    context['viewing_other'] = bool(viewed) and viewed.lower() != own_username.lower()
+
+    if not username:
         context['state'] = 'no_username'
         return render(request, 'analyzer/lichess.html', context)
 
-    data = lichess_api.get_player_data(lichess_username)
+    data = lichess_api.get_player_data(username)
     if data is None:
         context['state'] = 'not_found'
-        context['attempted_username'] = lichess_username
+        context['attempted_username'] = username
         return render(request, 'analyzer/lichess.html', context)
 
     tz_offset = _user_tz_offset(request.user)
     context['state'] = 'ok'
     context['player'] = data
-    context.update(_build_lichess_tilt_context(lichess_username, data, tz_offset))
+    context.update(_build_lichess_tilt_context(username, data, tz_offset))
     return render(request, 'analyzer/lichess.html', context)
+
+
+@login_required
+@require_GET
+def lichess_search(request):
+    """AJAX autocomplete: fuzzy Lichess player search."""
+    results = lichess_api.search_player(request.GET.get('q', ''))
+    return JsonResponse({'results': results})
 
 
 def signup(request):

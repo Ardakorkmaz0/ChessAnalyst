@@ -5,6 +5,29 @@
 {% block content %}
 <section class="stats-page">
 
+    {% if user.is_authenticated %}
+    <div class="user-search" data-search-platform="chesscom">
+        <div class="user-search-box">
+            <svg class="user-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" class="user-search-input" id="cc-search-input"
+                   placeholder="Search a player…" autocomplete="off" spellcheck="false"
+                   aria-label="Search Chess.com players">
+            <button type="button" class="user-search-clear" id="cc-search-clear" hidden aria-label="Clear search">&times;</button>
+        </div>
+        <ul class="user-search-results" id="cc-search-results" role="listbox" hidden></ul>
+    </div>
+    {% endif %}
+
+    {% if viewing_other %}
+    <div class="viewing-banner">
+        <span class="viewing-banner-text">Viewing <strong>{{ viewed_username }}</strong></span>
+        <a class="viewing-banner-back" href="{% url 'analyzer:home_chesscom' %}">&larr; Back to your profile</a>
+    </div>
+    {% endif %}
+
     {% if state == 'guest' %}
         <div class="empty-state">
             <h2>Sign in to see your Chess.com stats</h2>
@@ -388,6 +411,123 @@
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+})();
+
+/* ============ Player search (autocomplete) ============ */
+(function () {
+    const root = document.querySelector('[data-search-platform="chesscom"]');
+    if (!root) return;
+
+    const input    = document.getElementById('cc-search-input');
+    const clearBtn = document.getElementById('cc-search-clear');
+    const results  = document.getElementById('cc-search-results');
+    const searchUrl = '{% url "analyzer:chesscom_search" %}';
+    const viewBase  = '{% url "analyzer:home_chesscom" %}';
+
+    let timer = null;
+    let lastQuery = '';
+
+    function go(username) {
+        window.location.href = viewBase + '?u=' + encodeURIComponent(username);
+    }
+
+    function hideResults() {
+        results.hidden = true;
+        results.innerHTML = '';
+    }
+
+    function renderResults(items) {
+        results.innerHTML = '';
+        if (!items.length) {
+            const li = document.createElement('li');
+            li.className = 'user-search-empty';
+            li.textContent = 'No player found';
+            results.appendChild(li);
+            results.hidden = false;
+            return;
+        }
+        items.forEach(function (it) {
+            const li = document.createElement('li');
+            li.className = 'user-search-item';
+            li.tabIndex = 0;
+            li.setAttribute('role', 'option');
+
+            const img = document.createElement('img');
+            img.className = 'user-search-avatar';
+            img.src = it.avatar || '';
+            img.alt = '';
+            img.loading = 'lazy';
+
+            const meta = document.createElement('div');
+            meta.className = 'user-search-meta';
+
+            const nameRow = document.createElement('div');
+            nameRow.className = 'user-search-name';
+            if (it.title) {
+                const t = document.createElement('span');
+                t.className = 'user-search-title';
+                t.textContent = it.title;
+                nameRow.appendChild(t);
+            }
+            nameRow.appendChild(document.createTextNode(it.name || it.username));
+
+            const sub = document.createElement('div');
+            sub.className = 'user-search-sub';
+            sub.textContent = '@' + it.username + (it.country ? ' · ' + it.country : '');
+
+            meta.appendChild(nameRow);
+            meta.appendChild(sub);
+            li.appendChild(img);
+            li.appendChild(meta);
+
+            li.addEventListener('click', function () { go(it.username); });
+            li.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(it.username); });
+            results.appendChild(li);
+        });
+        results.hidden = false;
+    }
+
+    function doSearch(q) {
+        fetch(searchUrl + '?q=' + encodeURIComponent(q), {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (q !== lastQuery) return;   // ignore stale responses
+                renderResults(data.results || []);
+            })
+            .catch(hideResults);
+    }
+
+    input.addEventListener('input', function () {
+        const q = input.value.trim();
+        clearBtn.hidden = q.length === 0;
+        lastQuery = q;
+        if (timer) clearTimeout(timer);
+        if (q.length < 2) { hideResults(); return; }
+        timer = setTimeout(function () { doSearch(q); }, 350);
+    });
+
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            const q = input.value.trim();
+            if (q) go(q);
+        } else if (e.key === 'Escape') {
+            hideResults();
+        }
+    });
+
+    clearBtn.addEventListener('click', function () {
+        input.value = '';
+        clearBtn.hidden = true;
+        hideResults();
+        input.focus();
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!root.contains(e.target)) hideResults();
     });
 })();
 </script>

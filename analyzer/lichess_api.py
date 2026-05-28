@@ -47,6 +47,67 @@ def fetch_user(username):
     return _get(f"{BASE_URL}/user/{username}")
 
 
+# -----------------------------------------------------------------------
+# Player search (autocomplete)
+# -----------------------------------------------------------------------
+
+SEARCH_TTL = 60 * 30          # 30 min
+# Prestige order so titled players returned by autocomplete float to the top.
+TITLE_RANK = {"GM": 0, "WGM": 1, "IM": 2, "WIM": 3, "FM": 4, "WFM": 5,
+              "CM": 6, "WCM": 7, "NM": 8, "WNM": 9, "LM": 10}
+
+
+def search_player(query):
+    """Fuzzy player search via Lichess' autocomplete endpoint.
+
+    Lichess autocomplete is prefix-based and returns a fixed ~12 results
+    ordered by username length. We re-rank so titled players (GM/IM/FM/...)
+    surface first — the closest analogue to the Chess.com title priority.
+    Lichess has no profile photos, so the UI renders a letter avatar.
+    """
+    query = (query or "").strip()
+    if len(query) < 3:        # Lichess autocomplete requires >= 3 chars
+        return []
+
+    cache_key = f"lichess:search:v2:{query.lower()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = {}
+    try:
+        resp = _session.get(
+            f"{BASE_URL}/player/autocomplete",
+            params={"term": query, "object": "true"},
+            timeout=TIMEOUT,
+        )
+        if resp.ok:
+            data = resp.json()
+    except (requests.RequestException, ValueError):
+        data = {}
+
+    cards = []
+    for item in (data.get("result") or []):
+        name = item.get("name") or item.get("id")
+        if not name:
+            continue
+        cards.append({
+            "username": item.get("id") or name.lower(),
+            "name": name,
+            "title": item.get("title") or "",
+            "flair": item.get("flair") or "",
+            "patron": bool(item.get("patron")),
+        })
+
+    # Stable sort: titled players to the top by prestige, otherwise keep
+    # Lichess' own relevance/length ordering.
+    cards.sort(key=lambda c: TITLE_RANK.get(c["title"], 50))
+    results = cards[:8]
+
+    cache.set(cache_key, results, SEARCH_TTL)
+    return results
+
+
 def fetch_rating_history(username):
     """Returns list of {name, points: [[y, m_0idx, d, rating], ...]}."""
     return _get(f"{BASE_URL}/user/{username}/rating-history")

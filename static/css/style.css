@@ -2619,3 +2619,191 @@ a {
         background: var(--bg-elev);
     }
 }
+
+/* ===================================================================
+   Player search (autocomplete)
+   =================================================================== */
+
+.user-search {
+    position: relative;
+    width: 100%;
+    max-width: 280px;
+    margin: 0 0 18px auto;          /* sits at the top-right of the content column */
+    z-index: 30;
+}
+
+/* Clean, background-less box: thin border + magnifier, blends with the page. */
+.user-search-box {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.user-search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--tilt-action-soft);
+}
+
+.user-search-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+}
+
+.user-search-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    padding: 0;
+}
+
+.user-search-input::placeholder { color: var(--text-muted); }
+
+.user-search-clear {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.user-search-clear:hover { color: var(--text); }
+.user-search-clear[hidden] { display: none; }
+
+/* Dropdown results */
+.user-search-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 40;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.20);
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.user-search-results[hidden] { display: none; }
+
+.user-search-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.user-search-item:hover,
+.user-search-item:focus {
+    background: var(--bg-elev-2);
+    outline: none;
+}
+
+.user-search-avatar {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: var(--bg-elev-2);
+}
+
+/* Letter placeholder used for Lichess (no profile photos). */
+.user-search-avatar-letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    background: var(--accent);
+}
+
+.user-search-meta { min-width: 0; }
+
+.user-search-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-search-title {
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.user-search-sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-search-empty {
+    padding: 14px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* "Viewing another player" banner */
+.viewing-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 1280px;
+    margin: 0 auto 16px;
+    padding: 10px 16px;
+    border: 1px solid var(--tilt-action-border);
+    border-radius: 10px;
+    background: var(--tilt-action-soft);
+    color: var(--text);
+    font-size: 13.5px;
+}
+
+.viewing-banner-back {
+    color: var(--accent);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.viewing-banner-back:hover { text-decoration: underline; }
+
+@media (max-width: 560px) {
+    .user-search { max-width: 100%; }
+}

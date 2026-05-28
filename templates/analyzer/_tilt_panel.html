@@ -99,7 +99,7 @@ Required context vars (provided by views._build_tilt_context_from_games):
             </div>
         </div>
 
-        <div class="tilt-custom-range" data-tilt-range data-tilt-platform="{{ platform }}">
+        <div class="tilt-custom-range" data-tilt-range data-tilt-platform="{{ platform }}" data-tilt-username="{{ viewed_username|default:'' }}">
             <span class="tilt-custom-range-label">Custom range</span>
             <div class="tilt-custom-range-inputs">
                 <input type="date" data-tilt-range-from aria-label="Start date">
@@ -954,6 +954,8 @@ Required context vars (provided by views._build_tilt_context_from_games):
 
         const url = new URL('{% url "analyzer:tilt_range" %}', window.location.origin);
         url.searchParams.set('platform', platform);
+        const viewedUser = (rangeRoot.dataset.tiltUsername || '').trim();
+        if (viewedUser) url.searchParams.set('username', viewedUser);
         if (fromValue) url.searchParams.set('from', fromValue);
         if (toValue) url.searchParams.set('to', toValue);
 
