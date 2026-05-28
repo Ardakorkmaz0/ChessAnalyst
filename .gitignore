@@ -7,6 +7,9 @@ __pycache__/
 # Personal notes / planning (not for public)
 PLAN.md
 
+# Local Claude settings
+.claude/
+
 # virtual environment
 venv/
 .venv/

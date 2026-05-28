@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Compare players — ChessAnalyst{% endblock %}
+
+{% block content %}
+<section class="stats-page">
+
+    {% if not compare_ready %}
+        <div class="empty-state">
+            <h2>Pick two players to compare</h2>
+            <p>Open any Chess.com or Lichess profile and tap the comparison crescent next to the avatar. Your picks collect in the panel at the bottom-right — then hit Compare.</p>
+            {% if compare_errors %}
+            <p class="compare-error">Couldn't load: {{ compare_errors|join:", " }}</p>
+            {% endif %}
+            <a href="{% url 'analyzer:home' %}" class="cta-button">Go to dashboard</a>
+        </div>
+    {% else %}
+
+        {# Player headers: A vs B #}
+        <div class="compare-versus">
+            {% for who, p in compare_cards %}
+            <div class="compare-card compare-card-{{ who }}">
+                {% if p.avatar %}
+                    <img src="{{ p.avatar }}" alt="" class="compare-avatar">
+                {% else %}
+                    <span class="compare-avatar compare-avatar-letter">{{ p.name|first|upper }}</span>
+                {% endif %}
+                <div class="compare-card-info">
+                    <div class="compare-card-name">
+                        {% if p.title %}<span class="compare-card-title">{{ p.title }}</span>{% endif %}
+                        {{ p.name }}
+                    </div>
+                    <div class="compare-card-sub">
+                        {% if p.platform == 'chesscom' %}
+                            <img src="{% static 'images/chesscom.png' %}" alt="Chess.com" class="compare-card-plogo compare-card-plogo-light">
+                            <img src="{% static 'images/chesscom_logo_wordmark_outline.svg' %}" alt="Chess.com" class="compare-card-plogo compare-card-plogo-dark">
+                        {% else %}
+                            <img src="{% static 'images/lichess.svg' %}" alt="Lichess" class="compare-card-plogo">
+                        {% endif %}
+                        <span>@{{ p.username }}{% if p.country %} · {{ p.country }}{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+            {% if who == 'a' %}<div class="compare-vs">VS</div>{% endif %}
+            {% endfor %}
+        </div>
+
+        {# Rating-evolution chart (Both-tab style) #}
+        <div class="combined-chart-card">
+            <div class="combined-chart-head">
+                <h2 class="combined-chart-title">Rating evolution</h2>
+                <div class="combined-tc-selector" role="tablist" aria-label="Time control">
+                    <button type="button" class="tc-btn" data-tc="bullet" role="tab"><span class="tc-tab-long">Bullet</span><span class="tc-tab-short">Bu</span></button>
+                    <button type="button" class="tc-btn active" data-tc="blitz" role="tab" aria-selected="true"><span class="tc-tab-long">Blitz</span><span class="tc-tab-short">Bl</span></button>
+                    <button type="button" class="tc-btn" data-tc="rapid" role="tab"><span class="tc-tab-long">Rapid</span><span class="tc-tab-short">Ra</span></button>
+                    <button type="button" class="tc-btn" data-tc="classical" role="tab"><span class="tc-tab-long">Classical</span><span class="tc-tab-short">Cl</span></button>
+                    <button type="button" class="tc-btn" data-tc="daily" role="tab"><span class="tc-tab-long">Daily</span><span class="tc-tab-short">Da</span></button>
+                </div>
+            </div>
+
+            <div class="compare-legend">
+                <span class="compare-legend-item"><span class="compare-legend-dot" style="background:#6f9f3d"></span>{{ compare_a.name }}</span>
+                <span class="compare-legend-item"><span class="compare-legend-dot" style="background:#4f7fe0"></span>{{ compare_b.name }}</span>
+            </div>
+
+            <div class="combined-chart-canvas">
+                <canvas id="compare-chart"
+                        data-a-name="{{ compare_a.name }}"
+                        data-b-name="{{ compare_b.name }}"></canvas>
+                <div class="compare-empty" id="compare-empty" hidden>Neither player has games in this time control.</div>
+            </div>
+        </div>
+
+    {% endif %}
+</section>
+
+{{ compare_payload|json_script:"compare-payload" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+(function () {
+    const canvas = document.getElementById('compare-chart');
+    if (!canvas) return;
+
+    let payload = { a: {}, b: {} };
+    try {
+        const node = document.getElementById('compare-payload');
+        if (node) payload = JSON.parse(node.textContent) || payload;
+    } catch (e) { /* keep default */ }
+
+    const COLOR_A = '#6f9f3d';
+    const COLOR_B = '#4f7fe0';
+    const nameA = canvas.dataset.aName || 'Player A';
+    const nameB = canvas.dataset.bName || 'Player B';
+    const emptyEl = document.getElementById('compare-empty');
+
+    let chart = null;
+    let currentTc = 'blitz';
+
+    function ptsToXY(pairs) {
+        return (pairs || []).map(p => ({ x: p[0], y: p[1] }));
+    }
+
+    function makeFillGradient(ctx, color, height) {
+        const g = ctx.createLinearGradient(0, 0, 0, height);
+        g.addColorStop(0,   color + '55');
+        g.addColorStop(0.6, color + '15');
+        g.addColorStop(1,   color + '00');
+        return g;
+    }
+
+    const crosshairPlugin = {
+        id: 'crosshair',
+        afterDraw(chartInst) {
+            const active = chartInst.tooltip && chartInst.tooltip.getActiveElements
+                ? chartInst.tooltip.getActiveElements() : [];
+            if (!active || !active.length) return;
+            const x = active[0].element.x;
+            const { top, bottom } = chartInst.chartArea;
+            const c = chartInst.ctx;
+            c.save();
+            c.beginPath();
+            c.moveTo(x, top); c.lineTo(x, bottom);
+            c.lineWidth = 1;
+            c.strokeStyle = 'rgba(120,130,145,0.35)';
+            c.setLineDash([4, 5]);
+            c.stroke();
+            c.restore();
+        },
+    };
+
+    function dataset(label, pairs, color, ctx, h) {
+        return {
+            label: label,
+            data: ptsToXY(pairs),
+            borderColor: color,
+            backgroundColor: makeFillGradient(ctx, color, h),
+            fill: true,
+            tension: 0.32,
+            borderWidth: 2.4,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: color,
+            pointHoverBorderColor: '#ffffff',
+            pointHoverBorderWidth: 2.5,
+        };
+    }
+
+    function buildChart() {
+        const ctx = canvas.getContext('2d');
+        if (chart) { chart.destroy(); chart = null; }
+
+        const aData = (payload.a || {})[currentTc] || [];
+        const bData = (payload.b || {})[currentTc] || [];
+        const h = canvas.parentElement.clientHeight || 360;
+
+        const datasets = [];
+        if (aData.length) datasets.push(dataset(nameA, aData, COLOR_A, ctx, h));
+        if (bData.length) datasets.push(dataset(nameB, bData, COLOR_B, ctx, h));
+
+        if (emptyEl) emptyEl.hidden = datasets.length > 0;
+        canvas.style.opacity = datasets.length ? '1' : '0';
+
+        const heavy = (aData.length + bData.length) > 1500;
+
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                parsing: false,
+                normalized: true,
+                animation: heavy ? false : { duration: 900, easing: 'easeInOutQuart' },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
+                        grid:   { color: 'rgba(120,130,145,0.10)' },
+                        border: { display: false },
+                        ticks:  { color: 'rgba(120,130,145,0.9)', font: { size: 11, weight: '500' } },
+                    },
+                    y: {
+                        grid:   { color: 'rgba(120,130,145,0.12)' },
+                        border: { display: false },
+                        ticks:  { color: 'rgba(120,130,145,0.9)', font: { size: 11, weight: '500' }, padding: 10 },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    decimation: { enabled: true, algorithm: 'lttb', samples: 500 },
+                    tooltip: {
+                        backgroundColor: 'rgba(20,22,28,0.96)',
+                        borderColor: 'rgba(118,150,86,0.35)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 10,
+                        titleColor: '#9aa0a6',
+                        bodyColor: '#e8eaed',
+                        usePointStyle: true,
+                        callbacks: { label: (item) => '  ' + item.dataset.label + ': ' + item.formattedValue },
+                    },
+                    zoom: {
+                        pan:  { enabled: true, mode: 'x' },
+                        zoom: { wheel: { enabled: true, speed: 0.08 }, pinch: { enabled: true }, mode: 'x' },
+                    },
+                },
+            },
+            plugins: heavy ? [] : [crosshairPlugin],
+        });
+    }
+
+    document.querySelectorAll('.tc-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentTc = btn.dataset.tc;
+            document.querySelectorAll('.tc-btn').forEach(b => {
+                const on = b === btn;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-selected', on);
+            });
+            buildChart();
+        });
+    });
+
+    buildChart();
+})();
+</script>
+{% endblock %}

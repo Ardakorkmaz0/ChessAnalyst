@@ -28,11 +28,21 @@
         {# ----- Left: Chess.com ----- #}
         <div class="profile-card-mini profile-card-chesscom">
             {% if chesscom %}
-                {% if chesscom.avatar %}
-                    <img src="{{ chesscom.avatar }}" alt="" class="profile-avatar-img profile-avatar-mini">
-                {% else %}
-                    <div class="profile-avatar profile-avatar-mini">{{ chesscom.username|first|upper }}</div>
-                {% endif %}
+                <span class="profile-avatar-wrap profile-avatar-wrap-mini">
+                    {% if chesscom.avatar %}
+                        <img src="{{ chesscom.avatar }}" alt="" class="profile-avatar-img profile-avatar-mini">
+                    {% else %}
+                        <div class="profile-avatar profile-avatar-mini">{{ chesscom.username|first|upper }}</div>
+                    {% endif %}
+                    <button type="button" class="compare-crescent compare-crescent-mini" data-compare-add
+                            data-platform="chesscom" data-username="{{ chesscom.username }}"
+                            data-name="{{ chesscom.display_name }}" data-title="{{ chesscom.title|default:'' }}"
+                            data-avatar="{{ chesscom.avatar|default:'' }}" data-country="{{ chesscom.country_name|default:'' }}"
+                            title="Add to comparison" aria-label="Add Chess.com account to comparison">
+                        <svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="32" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-dasharray="160 41" transform="rotate(-18 40 40)"/></svg>
+                        <span class="compare-crescent-plus" aria-hidden="true">+</span>
+                    </button>
+                </span>
                 <div class="profile-card-info">
                     <div class="profile-card-platform">
                         <img src="{% static 'images/chesscom.png' %}" alt="Chess.com" class="platform-mini-logo platform-mini-logo-light">
@@ -76,9 +86,19 @@
         {# ----- Right: Lichess ----- #}
         <div class="profile-card-mini profile-card-lichess">
             {% if lichess %}
-                <div class="profile-avatar profile-avatar-mini profile-avatar-lichess">
-                    <img src="{% static 'images/lichess.svg' %}" alt="" class="profile-avatar-piece">
-                </div>
+                <span class="profile-avatar-wrap profile-avatar-wrap-mini">
+                    <div class="profile-avatar profile-avatar-mini profile-avatar-lichess">
+                        <img src="{% static 'images/lichess.svg' %}" alt="" class="profile-avatar-piece">
+                    </div>
+                    <button type="button" class="compare-crescent compare-crescent-mini" data-compare-add
+                            data-platform="lichess" data-username="{{ lichess.username }}"
+                            data-name="{{ lichess.display_name }}" data-title="{{ lichess.title|default:'' }}"
+                            data-avatar="" data-country="{{ lichess.country_name|default:lichess.country_code|default:'' }}"
+                            title="Add to comparison" aria-label="Add Lichess account to comparison">
+                        <svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="32" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-dasharray="160 41" transform="rotate(-18 40 40)"/></svg>
+                        <span class="compare-crescent-plus" aria-hidden="true">+</span>
+                    </button>
+                </span>
                 <div class="profile-card-info">
                     <div class="profile-card-platform">
                         <img src="{% static 'images/lichess.svg' %}" alt="Lichess" class="platform-mini-logo platform-mini-logo-lichess">

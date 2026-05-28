@@ -445,6 +445,77 @@ def lichess_search(request):
     return JsonResponse({'results': results})
 
 
+# ---------------------------------------------------------------------------
+# Player comparison
+# ---------------------------------------------------------------------------
+
+def _parse_compare_slot(value):
+    """'chesscom:magnuscarlsen' -> ('chesscom', 'magnuscarlsen'); None if invalid."""
+    if not value or ":" not in value:
+        return None
+    platform, _, username = value.partition(":")
+    platform = platform.strip().lower()
+    username = username.strip()
+    if platform not in ("chesscom", "lichess") or not username:
+        return None
+    return platform, username
+
+
+def _compare_player_meta(data, platform):
+    return {
+        "platform": platform,
+        "username": data.get("username"),
+        "name": data.get("display_name") or data.get("username"),
+        "title": data.get("title") or "",
+        "avatar": data.get("avatar") or "",
+        "country": data.get("country_name") or data.get("country_code") or "",
+        "flag_url": data.get("flag_url") or "",
+    }
+
+
+def _compare_tc_block(data):
+    """{bullet: [[ts,rating],...], blitz: [...], ...} from a player_data dict."""
+    out = {}
+    for tc in ("bullet", "blitz", "rapid", "classical", "daily"):
+        block = (data or {}).get(tc)
+        out[tc] = (block.get("dated_history") if block else None) or []
+    return out
+
+
+@login_required
+def compare(request):
+    """Side-by-side rating comparison of two players (any platform mix).
+
+    URL: /compare/?a=chesscom:magnuscarlsen&b=lichess:arda_22
+    """
+    context = {"platform": "compare"}
+    slots = {
+        "a": _parse_compare_slot(request.GET.get("a")),
+        "b": _parse_compare_slot(request.GET.get("b")),
+    }
+
+    players, payload, errors = {}, {}, []
+    for key, slot in slots.items():
+        if not slot:
+            continue
+        plat, uname = slot
+        data = (chesscom_api.get_player_data(uname) if plat == "chesscom"
+                else lichess_api.get_player_data(uname))
+        if data is None:
+            errors.append(uname)
+            continue
+        players[key] = _compare_player_meta(data, plat)
+        payload[key] = _compare_tc_block(data)
+
+    context["compare_a"] = players.get("a")
+    context["compare_b"] = players.get("b")
+    context["compare_cards"] = [(k, players[k]) for k in ("a", "b") if k in players]
+    context["compare_errors"] = errors
+    context["compare_ready"] = bool(players.get("a") and players.get("b"))
+    context["compare_payload"] = payload
+    return render(request, "analyzer/compare.html", context)
+
+
 def signup(request):
     if request.method == 'POST':
         form = UserCreationForm(request.POST)

@@ -80,6 +80,14 @@
         {% block content %}{% endblock %}
     </main>
 
+    {% if user.is_authenticated %}
+    {# Global player-comparison dock — selections persist across pages via localStorage #}
+    <aside class="compare-dock" id="compare-dock" data-compare-url="{% url 'analyzer:compare' %}" hidden aria-label="Player comparison">
+        <button type="button" class="compare-dock-go" id="compare-dock-go" disabled>Compare</button>
+        <div class="compare-dock-slots" id="compare-dock-slots"></div>
+    </aside>
+    {% endif %}
+
     <script>
         (function () {
             const root = document.documentElement;
@@ -111,5 +119,129 @@
             });
         })();
     </script>
+
+    {% if user.is_authenticated %}
+    <script>
+    /* ============ Player comparison dock (global) ============ */
+    (function () {
+        const KEY = 'chessanalyst-compare';
+        const dock = document.getElementById('compare-dock');
+        if (!dock) return;
+        const slotsEl = document.getElementById('compare-dock-slots');
+        const goBtn = document.getElementById('compare-dock-go');
+        const compareUrl = dock.dataset.compareUrl;
+
+        function load() {
+            try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+            catch (e) { return []; }
+        }
+        function save(list) {
+            try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+        }
+        function slotKey(p) { return (p.platform + ':' + p.username).toLowerCase(); }
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+            });
+        }
+
+        let toastTimer = null;
+        function toast(msg) {
+            let t = document.getElementById('compare-toast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'compare-toast';
+                t.className = 'compare-toast';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.classList.add('is-on');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { t.classList.remove('is-on'); }, 2200);
+        }
+
+        function render() {
+            const list = load();
+            dock.hidden = list.length === 0;
+            slotsEl.innerHTML = '';
+
+            for (let i = 0; i < 2; i++) {
+                const p = list[i];
+                const slot = document.createElement('div');
+                slot.className = 'compare-slot' + (p ? '' : ' is-empty');
+                if (p) {
+                    const avatar = p.avatar
+                        ? '<img class="compare-slot-avatar" src="' + esc(p.avatar) + '" alt="">'
+                        : '<span class="compare-slot-avatar compare-slot-avatar-letter">'
+                            + esc((p.name || p.username || '?').charAt(0).toUpperCase()) + '</span>';
+                    const titleHtml = p.title ? '<span class="compare-slot-title">' + esc(p.title) + '</span>' : '';
+                    const sub = '@' + p.username + (p.country ? ' · ' + p.country : '');
+                    slot.innerHTML = avatar
+                        + '<div class="compare-slot-info">'
+                        +   '<div class="compare-slot-name">' + titleHtml + esc(p.name || p.username) + '</div>'
+                        +   '<div class="compare-slot-sub">' + esc(sub) + '</div>'
+                        + '</div>'
+                        + '<button type="button" class="compare-slot-remove" data-remove="' + i + '" aria-label="Remove">&times;</button>';
+                } else {
+                    slot.innerHTML = '<span class="compare-slot-required">User Required</span>';
+                }
+                slotsEl.appendChild(slot);
+            }
+            goBtn.disabled = list.length < 2;
+        }
+
+        function add(p) {
+            if (!p || !p.platform || !p.username) return;
+            const list = load();
+            if (list.some(function (x) { return slotKey(x) === slotKey(p); })) {
+                toast((p.name || p.username) + ' is already selected');
+                return;
+            }
+            if (list.length >= 2) {
+                toast('Comparison full — remove a player first');
+                return;
+            }
+            list.push(p);
+            save(list);
+            render();
+            toast('Added ' + (p.name || p.username));
+        }
+
+        // Crescent "add to compare" buttons — delegated so it works on every page.
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-compare-add]');
+            if (!btn) return;
+            e.preventDefault();
+            add({
+                platform: btn.dataset.platform,
+                username: btn.dataset.username,
+                name: btn.dataset.name || btn.dataset.username,
+                title: btn.dataset.title || '',
+                avatar: btn.dataset.avatar || '',
+                country: btn.dataset.country || '',
+            });
+        });
+
+        slotsEl.addEventListener('click', function (e) {
+            const rm = e.target.closest('[data-remove]');
+            if (!rm) return;
+            const list = load();
+            list.splice(parseInt(rm.dataset.remove, 10), 1);
+            save(list);
+            render();
+        });
+
+        goBtn.addEventListener('click', function () {
+            const list = load();
+            if (list.length < 2) return;
+            const a = list[0].platform + ':' + list[0].username;
+            const b = list[1].platform + ':' + list[1].username;
+            window.location.href = compareUrl + '?a=' + encodeURIComponent(a) + '&b=' + encodeURIComponent(b);
+        });
+
+        render();
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>
