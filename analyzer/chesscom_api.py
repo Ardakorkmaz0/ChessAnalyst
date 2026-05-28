@@ -21,7 +21,7 @@ ARCHIVE_TTL = 60 * 60 * 24    # 24h per archive (past months never change)
 HISTORY_MONTHS = None         # None = pull entire account history
 SPARKLINE_POINTS = 30         # small card sparkline — last N games
 PARALLEL_WORKERS = 12         # concurrent HTTP fetches
-GAME_CACHE_VERSION = 2        # bump when tilt game cache behavior changes
+GAME_CACHE_VERSION = 3        # bump when tilt game cache behavior changes
 
 # Reused session = TCP/TLS handshake once, not per request
 _session = requests.Session()
@@ -177,12 +177,14 @@ def _games_from_archive(username, archive_url):
             outcome = "loss"
 
         end_time = game.get("end_time") or 0
+        opp_username = (opp_side.get("username") or "").strip()
         out.append({
             "ts": end_time * 1000,
             "result": outcome,
             "time_class": game.get("time_class"),
             "my_rating": my_side.get("rating"),
             "opp_rating": opp_side.get("rating"),
+            "opp_username": opp_username,
         })
 
     if out:

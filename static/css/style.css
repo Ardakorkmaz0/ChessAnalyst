@@ -31,6 +31,17 @@
     --lichess-logo-filter: invert(1);     /* Light theme shows the white-style Lichess mark. */
     --profile-chesscom-preview-filter: none;
     --profile-lichess-preview-filter: none;
+    /* Decorative page background + glass cards */
+    --app-grad-1: rgba(118, 150, 86, 0.30);
+    --app-grad-2: rgba(110, 105, 160, 0.18);
+    --app-base: linear-gradient(135deg, #f8faf5 0%, #f3f6fb 48%, #eaf0f6 100%);
+    --app-checker: rgba(118, 150, 86, 0.16);
+    --app-checker-opacity: 0.42;
+    --app-queen: rgba(31, 41, 55, 0.085);
+    --card-glass: linear-gradient(140deg, rgba(255, 255, 255, 0.82) 0%, rgba(244, 247, 251, 0.72) 100%);
+    --card-glass-border: rgba(148, 163, 184, 0.32);
+    --card-glass-shadow: 0 14px 34px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    --card-glass-blur: 18px;
 }
 
 :root[data-theme="dark"] {
@@ -63,6 +74,17 @@
     --lichess-logo-filter: none;          /* Dark theme keeps the original Lichess mark. */
     --profile-chesscom-preview-filter: none;
     --profile-lichess-preview-filter: invert(1);
+    /* Decorative page background + glass cards */
+    --app-grad-1: rgba(129, 182, 76, 0.15);
+    --app-grad-2: rgba(120, 115, 175, 0.13);
+    --app-base: linear-gradient(135deg, #1d2127 0%, #1a1d24 48%, #16191f 100%);
+    --app-checker: rgba(129, 182, 76, 0.09);
+    --app-checker-opacity: 0.5;
+    --app-queen: rgba(232, 234, 237, 0.055);
+    --card-glass: linear-gradient(140deg, rgba(40, 45, 54, 0.74) 0%, rgba(32, 36, 44, 0.64) 100%);
+    --card-glass-border: rgba(125, 135, 150, 0.24);
+    --card-glass-shadow: 0 14px 34px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --card-glass-blur: 18px;
 }
 
 * {
@@ -88,6 +110,61 @@ body {
 a {
     color: inherit;
     text-decoration: none;
+}
+
+/* Decorative fixed background layer.
+   Lives in its own element (not body::before) so scrolling never shifts it,
+   and uses z-index 0 (content sits at z-index 1) instead of z-index: -1. */
+.app-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 10% 18%, var(--app-grad-1), transparent 34%),
+        radial-gradient(circle at 90% 20%, var(--app-grad-2), transparent 36%),
+        var(--app-base);
+}
+
+/* Chessboard texture */
+.app-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(45deg, var(--app-checker) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--app-checker) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--app-checker) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--app-checker) 75%);
+    background-size: 120px 120px;
+    background-position: 0 0, 0 60px, 60px -60px, -60px 0;
+    opacity: var(--app-checker-opacity);
+}
+
+/* Oversized queen in the bottom-right corner */
+.app-bg::after {
+    content: "\265B";
+    position: absolute;
+    right: -80px;
+    bottom: -160px;
+    font-size: 650px;
+    line-height: 1;
+    font-family: Georgia, "Times New Roman", serif;
+    color: var(--app-queen);
+    transform: rotate(-8deg);
+}
+
+@media (max-width: 700px) {
+    .app-bg::after {
+        font-size: 380px;
+        right: -60px;
+        bottom: -90px;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .app-bg { transition: background 0.15s ease; }
 }
 
 /* Navbar stays at the top */
@@ -278,58 +355,10 @@ a {
 /* Main page area */
 
 .main-content {
+    position: relative;
+    z-index: 1;                 /* sit above .app-bg (z-index 0); navbar stays at 100 */
     padding-top: 64px;          /* navbar height */
     min-height: 100vh;
-}
-
-/* Hero area */
-
-.hero {
-    max-width: 880px;
-    margin: 0 auto;
-    padding: 80px 24px 40px;
-    text-align: center;
-}
-
-.hero-title {
-    font-size: 44px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    margin-bottom: 16px;
-    background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-.hero-subtitle {
-    font-size: 18px;
-    color: var(--text-muted);
-    max-width: 640px;
-    margin: 0 auto 40px;
-}
-
-/* Small call-to-action card */
-
-.cta-card {
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 32px;
-    max-width: 480px;
-    margin: 0 auto;
-    box-shadow: var(--shadow);
-}
-
-.cta-title {
-    font-size: 22px;
-    margin-bottom: 8px;
-}
-
-.cta-text {
-    color: var(--text-muted);
-    font-size: 15px;
-    margin-bottom: 24px;
 }
 
 .cta-button {
@@ -355,42 +384,6 @@ a {
 .cta-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-/* Feature boxes */
-
-.features {
-    max-width: 1080px;
-    margin: 60px auto 80px;
-    padding: 0 24px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 20px;
-}
-
-.feature {
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 24px;
-    transition: border-color 0.15s ease, transform 0.15s ease;
-}
-
-.feature:hover {
-    border-color: var(--accent);
-    transform: translateY(-2px);
-}
-
-.feature h3 {
-    font-size: 17px;
-    margin-bottom: 8px;
-    color: var(--text);
-}
-
-.feature p {
-    color: var(--text-muted);
-    font-size: 14px;
-    line-height: 1.5;
 }
 
 /* Mobile fixes */
@@ -449,27 +442,6 @@ a {
     .login-icon {
         width: 20px;
         height: 20px;
-    }
-
-    .hero {
-        padding: 48px 16px 24px;
-    }
-
-    .hero-title {
-        font-size: 32px;
-    }
-
-    .hero-subtitle {
-        font-size: 16px;
-    }
-
-    .cta-card {
-        padding: 24px 20px;
-    }
-
-    .features {
-        margin: 40px auto 60px;
-        padding: 0 16px;
     }
 }
 
@@ -573,170 +545,6 @@ a {
     .logout-button {
         width: 48px;
     }
-}
-
-/* Shared platform page styles */
-
-.page-hero {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 64px 24px 32px;
-    text-align: center;
-}
-
-.page-title {
-    font-size: 40px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    margin-bottom: 14px;
-}
-
-.page-title.chesscom-accent {
-    color: var(--chesscom);
-}
-
-.page-title.lichess-accent {
-    color: var(--lichess);
-}
-
-.page-subtitle {
-    font-size: 17px;
-    color: var(--text-muted);
-    max-width: 620px;
-    margin: 0 auto 36px;
-}
-
-.muted {
-    color: var(--text-muted);
-    font-size: 14px;
-}
-
-.hint {
-    margin-top: 32px;
-    color: var(--text-muted);
-    font-size: 14px;
-}
-
-.hint a {
-    color: var(--accent);
-    text-decoration: underline;
-}
-
-/* Cards on the Both page */
-
-.platform-pair {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-top: 24px;
-}
-
-.platform-card {
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 28px 24px;
-    text-align: left;
-    transition: border-color 0.15s ease, transform 0.15s ease;
-}
-
-.platform-card:hover {
-    transform: translateY(-2px);
-}
-
-.platform-card h3 {
-    font-size: 20px;
-    margin-bottom: 6px;
-}
-
-.platform-card-chesscom:hover {
-    border-color: var(--chesscom);
-}
-
-.platform-card-lichess:hover {
-    border-color: var(--lichess);
-}
-
-.platform-card .link-button {
-    display: inline-block;
-    margin-top: 14px;
-    color: var(--accent);
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.platform-card .link-button:hover {
-    text-decoration: underline;
-}
-
-@media (max-width: 560px) {
-    .platform-pair {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* Status cards and lists */
-
-.status-card {
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 28px;
-    max-width: 480px;
-    margin: 0 auto 32px;
-    text-align: left;
-}
-
-.status-card h3 {
-    margin-bottom: 8px;
-    font-size: 17px;
-}
-
-.status-card .cta-button {
-    margin-top: 16px;
-}
-
-.cta-button.cta-chesscom {
-    background: var(--chesscom);
-}
-
-.cta-button.cta-lichess {
-    background: var(--lichess);
-    color: var(--lichess-button-text);
-}
-
-.bullet-list {
-    list-style: none;
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 0;
-    text-align: left;
-}
-
-.bullet-list li {
-    padding: 8px 0 8px 22px;
-    position: relative;
-    color: var(--text-muted);
-    font-size: 14px;
-}
-
-.bullet-list li::before {
-    content: "";
-    position: absolute;
-    top: 15px;
-    left: 4px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-}
-
-.bullet-list code {
-    background: var(--bg-elev-2);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 13px;
-    color: var(--text);
 }
 
 /* Login and signup pages */
@@ -1320,15 +1128,6 @@ a {
 
 /* Win/Loss/Draw mini bar */
 
-.record-bar {
-    display: flex;
-    height: 5px;
-    border-radius: 3px;
-    overflow: hidden;
-    background: var(--bg);
-    margin-bottom: 8px;
-}
-
 .record-seg {
     display: block;
     transition: filter 0.15s ease;
@@ -1339,20 +1138,6 @@ a {
 .record-win  { background: #4caf50; }
 .record-loss { background: #e57878; }
 .record-draw { background: #9aa0a6; }
-
-.record-text {
-    display: flex;
-    gap: 5px;
-    align-items: center;
-    font-size: 12px;
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-}
-
-.record-text b {
-    color: var(--text);
-    font-weight: 600;
-}
 
 .record-sep { opacity: 0.4; }
 
@@ -2436,10 +2221,6 @@ a {
     line-height: 1;
 }
 
-.tilt-mini-stat strong.negative {
-    color: var(--chart-bad);
-}
-
 .tilt-mini-stat strong.is-negative {
     color: var(--chart-bad);
 }
@@ -2812,5 +2593,29 @@ a {
 
     .rating-value {
         font-size: 34px;
+    }
+}
+
+/* ---------- Glass-morphism cards ----------
+   Placed after all card definitions so it overrides their solid backgrounds.
+   Semi-transparent fill + blur lets the decorative .app-bg show through. */
+.rating-card,
+.combined-chart-card,
+.profile-card-mini,
+.tilt-inline-panel {
+    background: var(--card-glass);
+    border-color: var(--card-glass-border);
+    box-shadow: var(--card-glass-shadow);
+    backdrop-filter: blur(var(--card-glass-blur));
+    -webkit-backdrop-filter: blur(var(--card-glass-blur));
+}
+
+/* Fallback for browsers without backdrop-filter — keep an opaque, readable fill. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .rating-card,
+    .combined-chart-card,
+    .profile-card-mini,
+    .tilt-inline-panel {
+        background: var(--bg-elev);
     }
 }
