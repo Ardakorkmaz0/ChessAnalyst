@@ -1,12 +1,16 @@
 <h1>
   <img 
     src="https://github.com/user-attachments/assets/5971f4e8-b95a-4bee-8b75-ba462dae7f52"
-    width="52"
-    height="52"
+    width="58"
     align="center"
     alt="ChessAnalyst Logo"
   />
-  ChessAnalyst
+  <img 
+    src="./static/images/chessanalyst-title.svg"
+    height="58"
+    align="center"
+    alt="ChessAnalyst"
+  />
 </h1>
 
 A web application that pulls your games from Lichess and Chess.com and runs personal analytics on them — opening repertoire, tilt patterns, time management, and opponent prep.
