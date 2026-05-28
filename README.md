@@ -1,8 +1,20 @@
-# ChessAnalyst
+<h1>
+  <img 
+    src="https://github.com/user-attachments/assets/5971f4e8-b95a-4bee-8b75-ba462dae7f52"
+    width="52"
+    height="52"
+    align="center"
+    alt="ChessAnalyst Logo"
+  />
+  ChessAnalyst
+</h1>
 
 A web application that pulls your games from Lichess and Chess.com and runs personal analytics on them — opening repertoire, tilt patterns, time management, and opponent prep.
 
 Built with Django as a portfolio / learning project.
+
+---
+<img width="1280" height="800" alt="image" src="https://github.com/user-attachments/assets/707bf117-17af-428e-99bc-d8ac6fddaad2" />
 
 ---
 
